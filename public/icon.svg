@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ホーム画面用のアイコン。ゲーム内のプール水色（#1f9fd8）に合わせてある。 -->
+  <rect width="512" height="512" rx="96" fill="#11202f"/>
+  <rect x="56" y="150" width="400" height="240" rx="24" fill="#1f9fd8"/>
+  <!-- レーンロープ -->
+  <g stroke="#eaf6fc" stroke-width="10" stroke-linecap="round" opacity="0.85">
+    <line x1="86" y1="210" x2="426" y2="210" stroke-dasharray="26 20"/>
+    <line x1="86" y1="270" x2="426" y2="270" stroke-dasharray="26 20"/>
+    <line x1="86" y1="330" x2="426" y2="330" stroke-dasharray="26 20"/>
+  </g>
+  <!-- 泳ぐ人 -->
+  <g fill="#f7dc6f">
+    <circle cx="196" cy="240" r="26"/>
+    <rect x="216" y="226" width="120" height="28" rx="14"/>
+  </g>
+  <g fill="#f6c9a0">
+    <circle cx="300" cy="300" r="24"/>
+    <rect x="318" y="288" width="104" height="24" rx="12"/>
+  </g>
+</svg>

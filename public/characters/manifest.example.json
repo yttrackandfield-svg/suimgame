@@ -1,0 +1,19 @@
+{
+  "_comment": "このファイルを manifest.json にコピーし、置いた素材だけを files に並べる。manifest.json が無いあいだはコード生成のドット絵で動く。",
+  "files": [
+    "m_sporty/walk.png",
+    "m_sporty/walkBack.png",
+    "m_sporty/suit.png",
+    "m_sporty/swimFree.png",
+    "m_sporty/swimBreast.png",
+    "m_sporty/swimBack.png",
+    "m_sporty/swimFly.png",
+    "m_sporty/dive.png",
+    "m_sporty/train.png",
+    "b_genki/walk.png",
+    "b_genki/walkBack.png",
+    "b_genki/suit.png",
+    "b_genki/kick.png",
+    "b_genki/float.png"
+  ]
+}

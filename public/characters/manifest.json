@@ -1,0 +1,660 @@
+{
+  "files": [
+    {
+      "file": "b_genki/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "b_genki/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_genki/suit.png",
+    {
+      "file": "b_genki/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_genki/walk.png",
+    "b_genki/walkBack.png",
+    {
+      "file": "b_nakimushi/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "b_nakimushi/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_nakimushi/suit.png",
+    {
+      "file": "b_nakimushi/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_nakimushi/walk.png",
+    "b_nakimushi/walkBack.png",
+    {
+      "file": "b_oshare/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "b_oshare/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_oshare/suit.png",
+    {
+      "file": "b_oshare/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_oshare/walk.png",
+    "b_oshare/walkBack.png",
+    {
+      "file": "b_ottori/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "b_ottori/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_ottori/suit.png",
+    {
+      "file": "b_ottori/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_ottori/walk.png",
+    "b_ottori/walkBack.png",
+    {
+      "file": "b_yancha/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "b_yancha/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_yancha/suit.png",
+    {
+      "file": "b_yancha/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "b_yancha/walk.png",
+    "b_yancha/walkBack.png",
+    {
+      "file": "f_adult/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "f_adult/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_adult/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_adult/suit.png",
+    {
+      "file": "f_adult/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_adult/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_adult/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_adult/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_adult/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_adult/train.png",
+    "f_adult/walk.png",
+    "f_adult/walkBack.png",
+    {
+      "file": "f_cool/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "f_cool/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_cool/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_cool/suit.png",
+    {
+      "file": "f_cool/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_cool/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_cool/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_cool/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_cool/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_cool/train.png",
+    "f_cool/walk.png",
+    {
+      "file": "f_cool/walkBack.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_energetic/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "f_energetic/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_energetic/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "f_energetic/suit.png",
+    {
+      "file": "f_energetic/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    {
+      "file": "f_energetic/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_energetic/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_energetic/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_energetic/swimFree.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "f_energetic/train.png",
+    {
+      "file": "f_energetic/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "f_energetic/walkBack.png",
+    {
+      "file": "f_senior/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "f_senior/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_senior/kick.png",
+      "frames": 4,
+      "fps": 7
+    },
+    "f_senior/suit.png",
+    {
+      "file": "f_senior/swim.png",
+      "frames": 4,
+      "fps": 7
+    },
+    {
+      "file": "f_senior/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_senior/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_senior/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_senior/swimFree.png",
+      "frames": 4,
+      "fps": 7
+    },
+    "f_senior/train.png",
+    {
+      "file": "f_senior/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "f_senior/walkBack.png",
+    {
+      "file": "f_student/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "f_student/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "f_student/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_student/suit.png",
+    {
+      "file": "f_student/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_student/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_student/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "f_student/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "f_student/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "f_student/train.png",
+    "f_student/walk.png",
+    {
+      "file": "f_student/walkBack.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_genki/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_genki/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_genki/suit.png",
+    {
+      "file": "g_genki/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_genki/walk.png",
+    "g_genki/walkBack.png",
+    {
+      "file": "g_nakimushi/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_nakimushi/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_nakimushi/suit.png",
+    {
+      "file": "g_nakimushi/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_nakimushi/walk.png",
+    "g_nakimushi/walkBack.png",
+    {
+      "file": "g_oshare/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_oshare/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_oshare/suit.png",
+    {
+      "file": "g_oshare/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_oshare/walk.png",
+    "g_oshare/walkBack.png",
+    {
+      "file": "g_ottori/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_ottori/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_ottori/suit.png",
+    {
+      "file": "g_ottori/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_ottori/walk.png",
+    "g_ottori/walkBack.png",
+    {
+      "file": "g_yancha/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "g_yancha/kick.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_yancha/suit.png",
+    {
+      "file": "g_yancha/swim.png",
+      "frames": 2,
+      "fps": 7
+    },
+    "g_yancha/walk.png",
+    "g_yancha/walkBack.png",
+    {
+      "file": "m_muscle/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "m_muscle/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "m_muscle/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_muscle/suit.png",
+    {
+      "file": "m_muscle/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_muscle/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_muscle/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_muscle/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_muscle/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_muscle/train.png",
+    {
+      "file": "m_muscle/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "m_muscle/walkBack.png",
+    {
+      "file": "m_office/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "m_office/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "m_office/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_office/suit.png",
+    {
+      "file": "m_office/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_office/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_office/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_office/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_office/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_office/train.png",
+    {
+      "file": "m_office/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "m_office/walkBack.png",
+    {
+      "file": "m_senior/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "m_senior/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "m_senior/kick.png",
+      "frames": 4,
+      "fps": 7
+    },
+    "m_senior/suit.png",
+    {
+      "file": "m_senior/swim.png",
+      "frames": 4,
+      "fps": 7
+    },
+    {
+      "file": "m_senior/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_senior/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_senior/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_senior/swimFree.png",
+      "frames": 4,
+      "fps": 7
+    },
+    "m_senior/train.png",
+    {
+      "file": "m_senior/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "m_senior/walkBack.png",
+    {
+      "file": "m_sporty/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "m_sporty/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "m_sporty/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_sporty/suit.png",
+    {
+      "file": "m_sporty/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_sporty/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_sporty/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_sporty/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_sporty/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_sporty/train.png",
+    {
+      "file": "m_sporty/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "m_sporty/walkBack.png",
+    {
+      "file": "m_student/dive.png",
+      "frames": 3,
+      "fps": 5
+    },
+    {
+      "file": "m_student/float.png",
+      "frames": 2,
+      "fps": 5
+    },
+    {
+      "file": "m_student/kick.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_student/suit.png",
+    {
+      "file": "m_student/swim.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_student/swimBack.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_student/swimBreast.png",
+      "frames": 2,
+      "fps": 6
+    },
+    {
+      "file": "m_student/swimFly.png",
+      "frames": 3,
+      "fps": 7
+    },
+    {
+      "file": "m_student/swimFree.png",
+      "frames": 3,
+      "fps": 7
+    },
+    "m_student/train.png",
+    {
+      "file": "m_student/walk.png",
+      "frames": 2,
+      "fps": 5
+    },
+    "m_student/walkBack.png"
+  ]
+}

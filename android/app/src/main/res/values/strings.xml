@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">マイスイミングクラブ</string>
+    <string name="title_activity_main">マイスイミングクラブ</string>
+    <string name="package_name">jp.myswimclub.app</string>
+    <string name="custom_url_scheme">jp.myswimclub.app</string>
+</resources>
