@@ -854,6 +854,7 @@ export class FacilityScene extends Phaser.Scene {
     this.panelRefreshAccum = 0;
     this.saving = false;
     this.racing = false;
+    this.toasts = []; // シーンを作り直したら、前のお知らせの記録は捨てる
     this.raceRetry = false;
     this.skipAllRaces = false;
     this.raceLog = [];
@@ -5452,6 +5453,8 @@ export class FacilityScene extends Phaser.Scene {
 
   /** 月替わりの収支レポート（開いている間は時間が止まる）。 */
   private showMonthlyReport(result: MonthRollResult): void {
+    // 見た目確認（?dev=…・開発ビルドだけ）では出さない。撮っている途中で月が替わると、絵がレポートで隠れる
+    if (this.dev) return;
     this.reportModal?.destroy();
     this.reportModal = new MonthlyReportModal(this, result, this.state.gems, {
       onClose: () => this.closeReport(),
@@ -6858,9 +6861,19 @@ export class FacilityScene extends Phaser.Scene {
   }
 
   /** 画面上部のお知らせ。important な内容（セーブ結果など）は設定OFFでも出す。 */
+  /** いま出ているお知らせ（上から順）。重ならないように、次のお知らせはこの下に出す。 */
+  private toasts: Phaser.GameObjects.Text[] = [];
+
   private toast(message: string, color: string, life = 1500, important = false): void {
     if (!important && !settings().showToast) return;
-    const cy = HUD_H + 40;
+    /**
+     * 【重ねない】（2026-09-28）以前は全部を同じ位置に出していて、
+     * 「自動セーブしました」と「第2週になった」が同時に出ると文字が重なって読めなかった。
+     * 出ているお知らせの下に積む（消えたぶんは詰める必要が無いほど短い間だけ出る）。
+     */
+    this.toasts = this.toasts.filter((x) => x.active);
+    const below = this.toasts.reduce((y, x) => Math.max(y, x.y + x.height / 2), 0);
+    const cy = Math.max(HUD_H + 40, below + 30);
     const t = this.add
       .text(GAME_WIDTH / 2, cy, message, {
         fontFamily: "sans-serif",
@@ -6888,10 +6901,14 @@ export class FacilityScene extends Phaser.Scene {
           y: cy - 14,
           delay: life,
           duration: 400,
-          onComplete: () => t.destroy(),
+          onComplete: () => {
+            t.destroy();
+            this.toasts = this.toasts.filter((x) => x !== t);
+          },
         });
       },
     });
+    this.toasts.push(t);
   }
 
   private playTalentEffect(): void {

@@ -1,4 +1,4 @@
-package jp.myswimclub.app;
+package jp.yymmapps.suimgame;
 
 import com.getcapacitor.BridgeActivity;
 
