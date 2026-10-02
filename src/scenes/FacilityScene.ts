@@ -164,12 +164,14 @@ import { SPECIAL_MENUS } from "../sim/special";
 import { MonthlyReportModal } from "../ui/MonthlyReportModal";
 import { NoticeFeed } from "../ui/NoticeFeed";
 import type { AutoEvent } from "../sim/autoEvents";
+import { coachGradeColor, coachGradeLabel, makeCoach } from "../sim/coach";
 import {
   AUTONOMY,
   CAMERA,
   CHATTER,
   CLOCK,
   CLUBRANK,
+  COACHING,
   DAYTIME,
   FATIGUE_MARK,
   FX,
@@ -903,6 +905,16 @@ export class FacilityScene extends Phaser.Scene {
 
     this.buildZoomButtons();
     this.notices = new NoticeFeed(this);
+    // 値上げ前のセーブを読み込んだときだけ、一度だけ知らせる（→ migrate 31）
+    if (this.state.priceRevisedNotice) {
+      this.state.priceRevisedNotice = false;
+      this.notices.push({
+        icon: "📢",
+        title: "施設の値段が改定されました",
+        detail: "部屋はおよそ5倍、プール・敷地の拡張も値上がりしました。建っている部屋と所持金はそのままです。撤去の返金は買ったときの値段から出ます。",
+        color: "#f5b041",
+      });
+    }
     this.perf = createPerfMeter(this);
     this.perf.watch(this.world);
 
@@ -1318,8 +1330,16 @@ export class FacilityScene extends Phaser.Scene {
     const plain: Record<string, (() => void) | undefined> = {
       timetable: () => this.onTimetable(),
       coach: () => {
+        // :met … 記録会で出会ったコーチ（名コーチ・レジェンド）が名簿に居る絵
+        if (cls === "met") {
+          this.state.generateRecruits(); // ふつうの応募者も並べてから足す
+          for (const q of [5, 3]) {
+            const coach = makeCoach(Math.random, 9900 + q, q);
+            this.state.recruitPool.push({ coach, cost: COACHING.recruit.baseCostByQuality[q], since: this.state.monthCount, metAt: "全国記録会" });
+          }
+        }
         this.onCoach();
-        if (cls === "recruit") this.coachModal?.devShowRecruit();
+        if (cls === "recruit" || cls === "met") this.coachModal?.showRecruit();
       },
       shop: () => {
         this.onShop();
@@ -6701,6 +6721,7 @@ export class FacilityScene extends Phaser.Scene {
     this.raceLog.push({ compName: comp.name, event: { ...ev }, result: r });
     const winners = r.entries.filter((e) => e.entrant.win).map((e) => e.student);
     const gainedPassion = r.passion;
+    const coachMet = r.coachMet;
     /**
      * 注目選手（★）の自己ベスト更新。
      * 成長が遅い遊びなので、**速くなった瞬間**をその場で見せないと気づかれない。
@@ -6734,6 +6755,27 @@ export class FacilityScene extends Phaser.Scene {
           subtitle: comp.name,
           color: "#f7dc6f",
           burst: true,
+        });
+      }
+      // 【記録会でのコーチとの出会い】名簿に入ったので、募集のタブへ案内する（→ MEET_COACH）
+      if (coachMet) {
+        const grade = coachGradeLabel(coachMet.coach.quality);
+        this.celebrate.push({
+          icon: "🤝",
+          title: `${grade}と出会った！`,
+          subtitle: `${coachMet.coach.name}（${comp.name}）`,
+          color: coachGradeColor(coachMet.coach.quality),
+          burst: coachMet.coach.quality >= 5,
+        });
+        this.notices.push({
+          icon: "🤝",
+          title: `${comp.name}で${grade}の${coachMet.coach.name}と出会った`,
+          detail: `募集の名簿に入った（${COACHING.recruit.expireMonths}ヶ月で他所へ行く）。タップで募集を開く`,
+          color: coachGradeColor(coachMet.coach.quality),
+          onTap: () => {
+            this.onCoach();
+            this.coachModal?.showRecruit();
+          },
         });
       }
       /**

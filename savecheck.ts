@@ -333,4 +333,35 @@ head("9. 注目選手の★が保存される");
   ok(g2.st.pinnedStudents().length === 0, "印を持たない古いセーブは★なしで読み込まれる");
 }
 
+head("10. 値上げ前（v31）のセーブ：払った額と返金（2026-10-02）");
+{
+  const st = new GameState(rng(101));
+  const clock = new GameClock();
+  st.gems = 9_999_999;
+  const price = st.equipmentCost("studio");
+  const bought = st.buyEquipment("studio");
+  ok(bought.ok && bought.item?.paid === price, "買った部屋は払った額を覚える", `◆${bought.item?.paid}`);
+  const data = buildSave(st, clock, 0);
+
+  // v31 当時の形に戻す（paid を持たない）
+  const old = JSON.parse(JSON.stringify(data)) as Record<string, unknown> & { game: Record<string, unknown> };
+  old.version = 31;
+  for (const e of old.game.equipment as Record<string, unknown>[]) delete e.paid;
+  const r = migrateSave(old);
+  ok(r.ok, "v31 のセーブを読める", r.ok ? `v${r.data.version}` : r.reason);
+  if (r.ok) {
+    const g = load(r.data, 102);
+    const studio = g.st.equipment.find((e) => e.kind === "studio");
+    ok(studio?.paid === 760, "値上げ前の部屋は当時の値段を払ったことになる", `◆${studio?.paid}`);
+    ok(g.st.priceRevisedNotice, "値上げのお知らせを出す印が立つ");
+    ok(g.st.gems === st.gems, "所持金はそのまま", `◆${g.st.gems}`);
+    const r2 = g.st.sellEquipment(studio!);
+    ok(r2.ok && r2.refund === Math.round(760 * 0.35), "撤去の返金は払った額から（値上げ後の値段からではない）", `◆${r2.refund}`);
+  }
+  // 開始時から建っている部屋（ただでもらった）は返金しない
+  const st3 = new GameState(rng(103));
+  const entrance = st3.equipment.find((e) => e.kind === "entrance")!;
+  ok((entrance.paid ?? 0) === 0, "開始時の入口は払った額 0");
+}
+
 console.log(`\n${fail === 0 ? "全て通過" : `${fail}件 失敗`}  （${pass}/${pass + fail}）`);

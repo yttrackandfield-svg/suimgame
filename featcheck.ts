@@ -79,7 +79,7 @@ import { effectiveStandard } from "./src/data/standardTimes";
 import { CALENDAR, finalWallOf, rivalLevelOf } from "./src/sim/competitions";
 import { CAMPAIGNS } from "./src/sim/campaign";
 import { simulateRace } from "./src/sim/race";
-import { coachGradeAvailable, coachGradeMinTier, coachSalary, makeCoach } from "./src/sim/coach";
+import { coachGradeMinTier, coachSalary, makeCoach, recruitTopQuality } from "./src/sim/coach";
 import { buildSave, applySave } from "./src/save/serialize";
 import { monthlyAdvice } from "./src/sim/advice";
 import { SAVE_VERSION } from "./src/save/types";
@@ -132,7 +132,7 @@ const newGame = (seed = 1): GameState => new GameState(rng(seed), { clubName: "�
  */
 function withCoaches(st: GameState, n: number): GameState {
   const keep = st.gems;
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   while (st.coaches.length < n) {
     if (st.coachCapacity() <= st.coaches.length && !st.buyEquipment("coachroom").ok) break;
     const cand = st.generateRecruits()[0];
@@ -190,8 +190,8 @@ head("A-2. クラス定員は固定（プールを増やしても増えない）
   ok(classDef("senshu").capacity === 18, "選手は18");
   ok(classDef("pro").capacity === 8, "プロは8");
 
-  st.gems = 999999;
-  while (st.expandLand().ok) st.gems = 999999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
   st.buyEquipment("pool6");
   st.buyEquipment("pool8");
   const caps = [st.capacityOf("ikuseiB"), st.capacityOf("ikuseiA"), st.capacityOf("senshu"), st.capacityOf("pro")];
@@ -225,8 +225,8 @@ head("B-1/B-2. プール・設備の価格（1年で全部は買えない）");
   ok(START.gems < pool, "所持金では最初からプールは買えない", `◆${START.gems} < ◆${pool}`);
 
   // 2本目はさらに高い（買い増すほど高くなる）
-  st.gems = 999999;
-  while (st.expandLand().ok) st.gems = 999999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
   st.buyEquipment("pool6");
   ok(st.equipmentCost("pool6") > pool, "2本目はもっと高い", `◆${pool} → ◆${st.equipmentCost("pool6")}`);
 
@@ -338,7 +338,7 @@ head("B-4. 敷地の拡張（買うほど高くなる）");
   const st = newGame();
   ok(!st.canExpandLand().ok, "開始直後は資金が足りず広げられない", st.canExpandLand().reason ?? "");
 
-  st.gems = 999999;
+  st.gems = 99_999_999;
   const map0 = st.map();
   const b0 = landBoundsOf(0);
   // ブロックは右（または下）に付くので、まだ買っていないのは敷地の右側
@@ -356,10 +356,10 @@ head("B-4. 敷地の拡張（買うほど高くなる）");
   // 【ブロック追加方式のいちばんの狙い】拡張しても、すでに置いた部屋は1マスも動かない
   {
     const st2 = newGame(77);
-    st2.gems = 9_999_999;
+    st2.gems = 99_999_999;
     for (const kind of ["pool6", "studio", "gym", "shop"] as const) {
       st2.buyEquipment(kind);
-      st2.gems = 9_999_999;
+      st2.gems = 99_999_999;
     }
     const snap = (): string =>
       placedRooms(st2.map())
@@ -369,15 +369,15 @@ head("B-4. 敷地の拡張（買うほど高くなる）");
     const before2 = snap();
     let moved = 0;
     while (st2.expandLand().ok) {
-      st2.gems = 9_999_999;
+      st2.gems = 99_999_999;
       if (snap() !== before2) moved++;
     }
     ok(moved === 0, "拡張しても部屋は1マスも動かない（配置をやり直さなくていい）", `${moved}回 動いた`);
     ok(st2.strandedRooms().length === 0, "最大まで広げても全部の部屋に行ける");
     ok(st2.landSteps === MAP.maxLandSteps, "最大まで広げられる", `${st2.landSteps}段`);
   }
-  st.gems = 999999;
-  while (st.expandLand().ok) st.gems = 999999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
   ok(st.strandedRooms().length === 0, "最大まで広げても全部の部屋に行ける");
   ok(st.trainingSlots() > 0, "プールも使えたまま", `枠${st.trainingSlots()}`);
   ok(!st.canExpandLand().ok, "上限まで買ったらそれ以上は広げられない", st.canExpandLand().reason ?? "");
@@ -385,13 +385,12 @@ head("B-4. 敷地の拡張（買うほど高くなる）");
 
 // ================================================================ B-5 コーチのスカウト
 
-head("B-5. 高格コーチはクラブの格・人気度が要る");
+head("B-5. 募集に来るコーチの格はクラブの格で決まる");
 {
-  ok(coachGradeMinTier(5) >= 5, "レジェンドは名門クラブのみ", `格${coachGradeMinTier(5)}以上`);
-  ok(!coachGradeAvailable(5, 1, 20), "無名クラブにレジェンドは来ない");
-  ok(!coachGradeAvailable(4, 1, 20), "無名クラブにトップコーチも来ない");
-  ok(coachGradeAvailable(1, 1, 0), "見習いはいつでも来る");
-  ok(coachGradeAvailable(5, 6, 999), "名門なら来る");
+  ok(coachGradeMinTier(5) == null, "レジェンドは募集には来ない（記録会の出会いだけ）");
+  ok((coachGradeMinTier(4) ?? 0) >= 4, "トップコーチは格4から", `格${coachGradeMinTier(4)}から`);
+  ok(coachGradeMinTier(1) === 1, "見習いは最初から来る");
+  ok(recruitTopQuality(1) < recruitTopQuality(6), "格が上がるほど良いコーチが来る", `${recruitTopQuality(1)} → ${recruitTopQuality(6)}`);
 
   const st = newGame();
   const cands = st.generateRecruits();
@@ -408,8 +407,8 @@ head("B-5. 高格コーチはクラブの格・人気度が要る");
 head("C-2. 別プールなら別のクラスを同時に回せる");
 {
   const st = newGame();
-  st.gems = 999999;
-  while (st.expandLand().ok) st.gems = 999999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
   st.buyEquipment("pool6");
   withCoaches(st, 2);
   for (const e of [...st.timetable]) st.setTimetableEntry(e.poolId, e.slot, null, null);
@@ -435,7 +434,7 @@ head("C-2. 別プールなら別のクラスを同時に回せる");
 head("C-3. 特別練習（効果が高いかわりに代償がある）");
 {
   const st = newGame();
-  st.gems = 999999;
+  st.gems = 99_999_999;
   const s = createStudent(rng(31), 5001, "senshu");
   st.students.senshu.push(s);
 
@@ -499,7 +498,7 @@ head("C-3. 特別練習（効果が高いかわりに代償がある）");
 
   // 通常練習より効果が大きい
   const st2 = newGame(41);
-  st2.gems = 999999;
+  st2.gems = 99_999_999;
   st2.passion = PASSION.max;
   const a = createStudent(rng(51), 5101, "senshu");
   const b = createStudent(rng(51), 5102, "senshu");
@@ -565,7 +564,7 @@ head("C-3b. 情熱（大会と客の満足で溜まり、特別練習で使う�
   st.students.senshu.push(senshu);
   // 勝ち上がりの前提が無い入口の大会（地区予選）。ここなら1回目から出せる
   const ken = CALENDAR.find((c) => c.route === "high" && !c.requiresPrev)!;
-  st.gems = 999999;
+  st.gems = 99_999_999;
   const r1 = st.enterCompetition([senshu], ken);
   ok(r1.passion > 0, "大会に出ると情熱が増える", `+${r1.passion}`);
   ok(r1.passion >= (PASSION.enterByScale[ken.scale] ?? 0), "少なくとも出場ぶんは入る", `${r1.passion}`);
@@ -693,8 +692,8 @@ head("C-6. 伸びの可視化（今月の伸び・設備の効果）");
 
   // 設備の効果（建てる前 → 建てた後）
   const st2 = newGame(95);
-  st2.gems = 999999;
-  while (st2.expandLand().ok) st2.gems = 999999;
+  st2.gems = 99_999_999;
+  while (st2.expandLand().ok) st2.gems = 99_999_999;
   const before = st2.roomTrainMult("studio");
   const after = st2.roomTrainMultIfBuilt("studio");
   ok(after > before, "スタジオを建てるとフォームの伸びが上がる", `×${before.toFixed(2)} → ×${after.toFixed(2)}`);
@@ -1240,7 +1239,7 @@ head("序盤の手ごたえ（初日に決めることがあるか）");
 head("敷地の拡張と入口（塀までついてくる・動かせる）");
 {
   const st = newGame();
-  st.gems = 999999;
+  st.gems = 99_999_999;
   const gate0 = placedRooms(st.map()).find((r) => r.kind === "entrance")!;
   ok(touchesPerimeter(st.map(), gate0), "最初から入口は外周の道路に面している");
   ok(landInnerSize(0) === MAP.baseInner, "初期の敷地は baseInner マス角", `${landInnerSize(0)}マス角`);
@@ -1257,7 +1256,7 @@ head("敷地の拡張と入口（塀までついてくる・動かせる）");
   let steps = 0;
   let stayed = true;
   while (st.expandLand().ok) {
-    st.gems = 999999;
+    st.gems = 99_999_999;
     steps++;
     const g = placedRooms(st.map()).find((r) => r.kind === "entrance")!;
     if (!touchesPerimeter(st.map(), g)) stayed = false;
@@ -1341,12 +1340,12 @@ head("車（通りを流れる／駐車場に出入りする）");
 head("部屋は器具込み・グレードで中身が変わる");
 {
   const st = newGame(77);
-  st.gems = 9_999_999;
-  while (st.expandLand().ok) st.gems = 9_999_999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
 
   // 器具も外構の装飾も「1個ずつ買って置く」仕組みは廃止（部屋のグレードに一本化）
   st.buyEquipment("gym");
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   const gym = st.equipment.find((e) => e.kind === "gym")!;
   ok(st.gradeOfRoom(gym) === 1, "買った部屋は「小」から始まる", gradeLabel(st.gradeOfRoom(gym)));
 
@@ -1414,7 +1413,7 @@ head("部屋は器具込み・グレードで中身が変わる");
 head("休養は1週間・取り消したらすぐ練習に戻る");
 {
   const st = newGame(101);
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   // 育成Bに数人入れて、時間割に1コマ入れる（練習の顔ぶれを見るため）
   const pool = st.placedPools()[0];
   for (const e of [...st.timetable]) st.setTimetableEntry(e.poolId, e.slot, null, null);
@@ -1498,14 +1497,14 @@ head("休養は1週間・取り消したらすぐ練習に戻る");
 head("回復施設は4種類・定員4名・練習後に1コマぶん使う");
 {
   const st = newGame(104);
-  st.gems = 9_999_999;
-  while (st.expandLand().ok) st.gems = 9_999_999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
 
   // --- 4種類とも建てられる
   const kinds = ["sauna", "bath", "openair", "recovery"] as const;
   for (const k of kinds) {
     st.buyEquipment(k);
-    st.gems = 9_999_999;
+    st.gems = 99_999_999;
   }
   ok(
     kinds.every((k) => st.equipmentCount(k) === 1),
@@ -1605,7 +1604,7 @@ head("回復施設は4種類・定員4名・練習後に1コマぶん使う");
 head("1回の入会は30人まで");
 {
   const st = newGame(301);
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   // 人気度をうんと上げても、1回で来るのは上限まで
   st.addPopularity(2000);
   for (const c of CLASS_ORDER) st.students[c.id].length = 0;
@@ -1620,7 +1619,7 @@ head("1回の入会は30人まで");
 
   // キャンペーンも同じ上限を通る
   const st2 = newGame(302);
-  st2.gems = 9_999_999;
+  st2.gems = 99_999_999;
   st2.addPopularity(2000);
   for (const c of CLASS_ORDER) st2.students[c.id].length = 0;
   const b2 = st2.students.youji.length + st2.students.gakudo.length;
@@ -1628,7 +1627,7 @@ head("1回の入会は30人まで");
   let best = 0;
   for (const id of ids) {
     const before2 = st2.students.youji.length + st2.students.gakudo.length;
-    st2.gems = 9_999_999;
+    st2.gems = 99_999_999;
     st2.runCampaign(id);
     best = Math.max(best, st2.students.youji.length + st2.students.gakudo.length - before2);
   }
@@ -1698,7 +1697,7 @@ head("全国決勝と世界大会には壁がある");
 head("自己新記録・大会新記録を拾えるか");
 {
   const st = newGame(303);
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   const who = createStudent(rng(401), 8900, "senshu");
   who.grade = "高2";
   for (const k of STAT_KEYS) who.stats[k] = 70;
@@ -1737,9 +1736,9 @@ head("自己新記録・大会新記録を拾えるか");
 
 head("セーブ v14（敷地・特別練習）");
 {
-  ok(SAVE_VERSION === 31, "セーブバージョンが31（v31＝部屋の利用回数と合宿の記録）", `${SAVE_VERSION}`);
+  ok(SAVE_VERSION === 32, "セーブバージョンが32（v32＝施設の値上げ・払った額・記録会のコーチとの出会い）", `${SAVE_VERSION}`);
   const st = newGame();
-  st.gems = 999999;
+  st.gems = 99_999_999;
   st.expandLand();
   const steps = st.landSteps;
   const save = buildSave(st, new GameClock(), 0);
@@ -2128,7 +2127,7 @@ head("会議室は全国区になれば建てられる");
   ok(!st.canPurchase("meeting").ok, "はじめは建てられない", st.canPurchase("meeting").reason ?? "");
 
   // 格だけを上げる（在籍は増やさない）。お金は解放の条件ではないので足しておく
-  st.gems = 999999;
+  st.gems = 99_999_999;
   st.clubAchievement = 0;
   let guard = 0;
   while (st.clubTier() < 4 && guard++ < 200) st.clubAchievement += 200;
@@ -2158,12 +2157,12 @@ head("設備一覧の並びが整っている");
   const big = ROOM_GROUPS[ROOM_GROUPS.length - 1];
   ok(big.label.includes("大型"), "最後は大型施設のまとまり", big.label);
   ok(
-    big.kinds.every((k) => equipmentDef(k).cost >= 100_000),
+    big.kinds.every((k) => equipmentDef(k).cost >= 1_000_000),
     "そこに入っているのは高い部屋だけ",
     big.kinds.map((k) => `${equipmentDef(k).label}◆${equipmentDef(k).cost}`).join(" "),
   );
   ok(
-    ROOM_GROUPS.slice(0, -1).every((g) => g.kinds.every((k) => equipmentDef(k).cost < 100_000)),
+    ROOM_GROUPS.slice(0, -1).every((g) => g.kinds.every((k) => equipmentDef(k).cost < 1_000_000)),
     "大型施設がほかのまとまりに紛れていない",
   );
   // 最初のまとまりは、入口とプール（＝最初に触るもの）
@@ -2273,10 +2272,10 @@ head("大きい部屋ほど一般客が来る");
   const small = newGame(501);
   const big = newGame(501);
   for (const st of [small, big]) {
-    st.gems = 9_999_999;
-    while (st.expandLand().ok) st.gems = 9_999_999;
+    st.gems = 99_999_999;
+    while (st.expandLand().ok) st.gems = 99_999_999;
     st.buyEquipment("gym");
-    st.gems = 9_999_999;
+    st.gems = 99_999_999;
   }
   const g = big.equipment.find((e) => e.kind === "gym")!;
   big.upgradeRoom(g);
@@ -2345,8 +2344,8 @@ head("満員なら並び、待ちくたびれたら帰る");
 
   // --- 本物の館で：人気のわりに部屋が小さいと、並ぶ客・入れる客・帰る客が出る
   const st = newGame(612);
-  st.gems = 9_999_999;
-  while (st.expandLand().ok) st.gems = 9_999_999;
+  st.gems = 99_999_999;
+  while (st.expandLand().ok) st.gems = 99_999_999;
   st.buyEquipment("gym");
   st.popularity = 20_000; // 部屋1つに対して客が多すぎる状態を作る
   let queued = 0;
@@ -2492,7 +2491,7 @@ head("大型プールのコマで練習すると伸びが大きく、大会で�
 head("全国から上の大会の遠征は1週だけ（週で数える）");
 {
   const st = newGame(93);
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   const s0 = st.students.senshu[0];
   const nat = CALENDAR.find((c) => c.scale === "national")!;
   ok(st.raceAwayDays(nat) === 1, "全国大会の遠征は1週", `${st.raceAwayDays(nat)}週`);
@@ -2532,7 +2531,7 @@ head("成長期の上限：小学生の天才は中学に上がるまで頭打�
 head("日本選手権の相手は、全員が参加標準記録より速い");
 {
   const st = newGame(95);
-  st.gems = 9_999_999;
+  st.gems = 99_999_999;
   const s0 = st.students.senshu[0];
   const nihon = CALENDAR.find((c) => c.id === "gen_nihon")!;
   const ev = { stroke: "free" as const, distance: 100 };

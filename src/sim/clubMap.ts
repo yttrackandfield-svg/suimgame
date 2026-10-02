@@ -65,7 +65,7 @@ export function clampLandSteps(steps: number): number {
  * その段数のときの敷地の広さ（マス）。
  *
  * 【ブロック追加方式】左下の角は動かさず、右→上→右→上 と交互にブロックを足す。
- *   0: 15×15 ／ 1: 25×15 ／ 2: 25×25 ／ 3: 35×25 ／ 4: 35×35
+ *   0: 15×15 ／ 1: 25×15 ／ 2: 25×25 ／ 3: 35×25 ／ 4: 35×35 ／ 5: 45×35
  * 既存の部屋は1マスも動かない（＝拡張しても配置をやり直さなくていい）。
  */
 export function landSizeOf(steps: number): { w: number; h: number } {

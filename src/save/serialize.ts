@@ -202,6 +202,7 @@ export function buildSave(state: GameState, clock: GameClock, playTimeMs: number
         gy: e.gy,
         grade: gradeOf(e),
         ...(e.rot === 1 ? { rot: 1 } : {}),
+        ...(e.paid ? { paid: Math.round(e.paid) } : {}),
       })),
       heldThisMonth: [...state.heldThisMonth],
       tutorialStep: state.tutorialStep,
@@ -226,12 +227,17 @@ export function buildSave(state: GameState, clock: GameClock, playTimeMs: number
       nextStaffId: state.staffIdCursor,
       dayCount: Math.max(0, Math.round(state.dayCount)),
       scoutBoost: r2(state.scoutBoost),
+      ...(state.priceRevisedNotice ? { priceRevisedNotice: true } : {}),
+      meetCoachMiss: Math.max(0, Math.round(state.meetCoachMiss)),
+      meetCoachRolled: [...state.meetCoachRolled],
+      meetCoachMetMonth: Math.round(state.meetCoachMetMonth),
       // --- v28（コーチの募集名簿。毎月積み上がるので途中経過を保存する）---
       monthCount: Math.max(0, Math.round(state.monthCount)),
       recruitPool: state.recruitPool.map((c) => ({
         coach: saveCoach(c.coach),
         cost: Math.round(c.cost),
         since: Math.max(0, Math.round(c.since)),
+        ...(c.metAt ? { metAt: c.metAt } : {}),
       })),
       // --- v9（マップ・時間割・一般客）---
       // roads は v20 で廃止（道を敷く仕組みをやめた）。読み込み側は無視する。
@@ -501,6 +507,7 @@ export function applySave(data: SaveData, state: GameState, clock: GameClock): v
       grade: clampGrade(num(e.grade, 1)),
       // 向き（1＝縦横を入れ替えた）。持っていない古いセーブは買ったときの向き
       ...(num(e.rot, 0) === 1 ? { rot: 1 as const } : {}),
+      ...(num(e.paid, 0) > 0 ? { paid: Math.round(num(e.paid, 0)) } : {}),
     }));
   // 敷地の広さ（買い足した段数）。**部屋を戻したあとに縮めない**ので、
   // すでに建っている部屋が全部おさまる段数を下限にする（古いデータの保険）。
@@ -689,13 +696,21 @@ export function applySave(data: SaveData, state: GameState, clock: GameClock): v
 
   state.dayCount = Math.max(0, Math.round(num(g.dayCount, 0)));
   state.scoutBoost = Math.max(0, num(g.scoutBoost, 0));
+  state.priceRevisedNotice = g.priceRevisedNotice === true;
   // コーチの募集名簿（v28）。古いセーブには無いので空で始まり、次の月初に埋まる。
   state.monthCount = Math.max(0, num(g.monthCount, 0));
   state.recruitPool = (Array.isArray(g.recruitPool) ? g.recruitPool : []).map((c) => ({
     coach: reviveCoach(c.coach, strokeRand),
     cost: num(c.cost, 20),
     since: Math.max(0, num(c.since, 0)),
+    ...(typeof c.metAt === "string" ? { metAt: c.metAt } : {}),
   }));
+  // 記録会でのコーチとの出会い（v32。無ければ何も起きていない状態から）
+  state.meetCoachMiss = Math.max(0, num(g.meetCoachMiss, 0));
+  state.meetCoachRolled = (Array.isArray(g.meetCoachRolled) ? g.meetCoachRolled : []).filter(
+    (k): k is string => typeof k === "string",
+  );
+  state.meetCoachMetMonth = num(g.meetCoachMetMonth, -1);
 
   const maxEquipmentId = state.equipment.reduce((m, e) => Math.max(m, e.id), 0);
 

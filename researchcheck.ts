@@ -314,7 +314,7 @@ head("進捗の速さ（人数・格・指導力・部屋数）");
 
 head(`セーブ v${SAVE_VERSION}`);
 {
-  ok(SAVE_VERSION === 31, "セーブバージョンが31（v31＝部屋の利用回数と合宿の記録）", `${SAVE_VERSION}`);
+  ok(SAVE_VERSION === 32, "セーブバージョンが32（v32＝施設の値上げ・払った額・記録会のコーチとの出会い）", `${SAVE_VERSION}`);
 
   const st = ready(21, 2, RESEARCH.groupSize * 2);
   st.startResearch("form");

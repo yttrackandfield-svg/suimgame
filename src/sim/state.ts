@@ -59,7 +59,8 @@ import {
   coachSalary,
   coachTrainMult,
   makeCoach,
-  makeRecruitCandidate,
+  recruitQualitiesFor,
+  rollMeetCoachQuality,
   specialtyStrokeMult,
   specialtyTrainMult,
   type Coach,
@@ -316,6 +317,7 @@ import {
   CLASSPLAN,
   CLUBRANK,
   COACHING,
+  MEET_COACH,
   CONDITION,
   DAILY,
   AMENITY,
@@ -535,6 +537,8 @@ export interface CompetitionResult {
   entryCost: number;
   /** 市長からの祝い金（優勝したときだけ。大会につき1回 → SCALE_MAYOR_PRIZE）。 */
   mayorPrize: number;
+  /** 記録会で出会ったコーチ（募集名簿に入った。出会わなければ null → MEET_COACH）。 */
+  coachMet: RecruitCandidate | null;
 }
 
 /** リレー（12月の世界選手権）1回ぶんの結果。 */
@@ -557,6 +561,8 @@ export interface RecruitCandidate {
    * COACHING.recruit.expireMonths を過ぎると「他所へ行った」として消える。
    */
   since: number;
+  /** 記録会で出会ったコーチなら、その記録会の名前（→ MEET_COACH）。名簿で印を付ける。 */
+  metAt?: string;
 }
 
 /**
@@ -1018,6 +1024,11 @@ export class GameState {
    * 一度募集すると消費される。
    */
   scoutBoost = 0;
+  /**
+   * 値上げ（2026-10-02）より前のセーブを読み込んだ印。施設画面が一度だけお知らせを出して下ろす。
+   * セーブの移行（migrate 31）が立てる。
+   */
+  priceRevisedNotice = false;
   /** 専門スタッフぶんの補正（雇用・解雇のたびに組み直す）。 */
   private staffCache: StaffBonus = emptyStaffBonus();
   /**
@@ -1066,7 +1077,7 @@ export class GameState {
       for (let i = 0; i < START.roster[c.id]; i++) {
         const gifted = giftedLeft > 0;
         if (gifted) giftedLeft--;
-        this.students[c.id].push(this.joined(createStudent(this.rand, this.nextId++, c.id, { gifted })));
+        this.students[c.id].push(this.joined(createStudent(this.rand, this.nextId++, c.id, { gifted, base: START.classBase[c.id] })));
       }
     }
     // コーチ：最小構成から（増やすほど毎月の給料が重くなる）。
@@ -1301,8 +1312,9 @@ export class GameState {
     const spot = checkPlacement(this.map(), kind, gx, gy, undefined, rot);
     if (!spot.ok) return { ok: false, reason: spot.reason };
 
-    this.gems -= this.equipmentCost(kind);
-    const item: Equipment = { id: this.nextEquipmentId++, kind, gx, gy, grade: 1, ...(rot === 1 ? { rot } : {}) };
+    const paid = this.equipmentCost(kind);
+    this.gems -= paid;
+    const item: Equipment = { id: this.nextEquipmentId++, kind, gx, gy, grade: 1, paid, ...(rot === 1 ? { rot } : {}) };
     this.equipment.push(item);
     this.invalidateMap();
     // プールを増やしたら、時間割の受け皿を用意する
@@ -2395,8 +2407,9 @@ export class GameState {
   buyEquipment(kind: EquipmentKind): { ok: boolean; reason?: string; item?: Equipment; placed?: boolean } {
     const check = this.canBuyEquipment(kind);
     if (!check.ok) return check;
-    this.gems -= this.equipmentCost(kind);
-    const item: Equipment = { id: this.nextEquipmentId++, kind, gx: null, gy: null, grade: 1 };
+    const paid = this.equipmentCost(kind);
+    this.gems -= paid;
+    const item: Equipment = { id: this.nextEquipmentId++, kind, gx: null, gy: null, grade: 1, paid };
     this.equipment.push(item);
     const spot = autoPlaceRoom(this.map(), kind, item.id);
     if (spot) {
@@ -2438,7 +2451,8 @@ export class GameState {
     const guard = this.poolRemovalGuard(item);
     if (!guard.ok) return guard;
     this.equipment.splice(i, 1);
-    const refund = Math.round(equipmentDef(item.kind).cost * MAP.sellRefund);
+    // 返金は「払った額」から（今の値段からではない → Equipment.paid）
+    const refund = Math.round((item.paid ?? 0) * MAP.sellRefund);
     this.gems += refund;
     this.invalidateMap();
     this.pruneTimetableNow();
@@ -3127,23 +3141,80 @@ export class GameState {
    *   2. 今月ぶんの新しい応募を perMonth 人足す
    *   3. 名簿が poolMax を超えたら、古い応募から落とす
    *
-   * 候補の質は clubStrength（人気度＋通算優勝）で底上げされるので、
-   * クラブが育つほど名簿の顔ぶれが良くなる。ただし**ばらつきが広い**ので、
-   * 強いクラブでも見習いは来るし、弱いクラブにも時々良いコーチが紛れ込む。
+   * 応募者の格は**クラブの格で決まる**（抽選しない → COACHING.recruit.byClubTier）。
+   * クラブが育つほど名簿の顔ぶれが良くなる。レジェンドは来ない（記録会の出会いだけ → MEET_COACH）。
+   * 合宿の「名コーチとの出会い」（scoutBoost）があれば、次の1回だけ1つ上の格の並びになる。
    */
   refillRecruitPool(count: number = COACHING.recruit.perMonth): void {
     const limit = COACHING.recruit.expireMonths;
     this.recruitPool = this.recruitPool.filter((c) => this.monthCount - c.since < limit);
-    const strength = this.clubStrength() + this.scoutBoost;
-    const tier = this.clubTier();
-    for (let i = 0; i < count; i++) {
-      const coach = makeRecruitCandidate(this.rand, this.nextCoachId++, strength, tier, this.popularity);
-      const cost = COACHING.recruit.baseCostByQuality[coach.quality] ?? 20;
-      this.recruitPool.push({ coach, cost, since: this.monthCount });
+    const boost = this.scoutBoost > 0 ? 1 : 0;
+    for (const q of recruitQualitiesFor(this.clubTier(), this.monthCount, count, boost)) {
+      const coach = makeCoach(this.rand, this.nextCoachId++, q);
+      this.recruitPool.push({ coach, cost: COACHING.recruit.baseCostByQuality[q] ?? 20, since: this.monthCount });
     }
     this.scoutBoost = 0;
-    const over = this.recruitPool.length - COACHING.recruit.poolMax;
+    this.trimRecruitPool();
+  }
+
+  /**
+   * 名簿が poolMax を超えたら古い応募から落とす。
+   * **記録会で出会ったコーチは後回し**（めったに来ない人が、ふつうの応募に押し出されないように）。
+   */
+  private trimRecruitPool(): void {
+    let over = this.recruitPool.length - COACHING.recruit.poolMax;
+    for (let i = 0; over > 0 && i < this.recruitPool.length; ) {
+      if (this.recruitPool[i].metAt) i++;
+      else {
+        this.recruitPool.splice(i, 1);
+        over--;
+      }
+    }
     if (over > 0) this.recruitPool.splice(0, over);
+  }
+
+  // -------------------------------------------------------------- 記録会でのコーチとの出会い
+
+  /** 続けて外れた回数（MEET_COACH.pityAfter に届いたら次は必ず出会う）。 */
+  meetCoachMiss = 0;
+  /** 今月すでに抽選した記録会（`通算の月:段`）。同じ記録会で何度も引かないように。 */
+  meetCoachRolled: string[] = [];
+  /** 最後に出会った通算の月（出会えるのは月に1人まで）。 */
+  meetCoachMetMonth = -1;
+
+  /**
+   * 記録会に出たときの出会いの抽選（→ MEET_COACH）。
+   * 記録会1つにつき1回・出会えるのは月に1人まで。出会えたら名簿に入れて返す。
+   */
+  private rollMeetCoach(comp: Competition): RecruitCandidate | null {
+    const tier = kirokukaiTierOf(comp.id);
+    if (tier == null) return null;
+    const key = `${this.monthCount}:${tier}`;
+    this.meetCoachRolled = this.meetCoachRolled.filter((k) => k.startsWith(`${this.monthCount}:`));
+    if (this.meetCoachRolled.includes(key) || this.meetCoachMetMonth === this.monthCount) return null;
+    this.meetCoachRolled.push(key);
+
+    const pity = MEET_COACH.pityAfter > 0 && this.meetCoachMiss >= MEET_COACH.pityAfter;
+    if (!pity && this.rand() >= MEET_COACH.chance) {
+      this.meetCoachMiss += 1;
+      return null;
+    }
+    this.meetCoachMiss = 0;
+    this.meetCoachMetMonth = this.monthCount;
+    // 名簿は「最初に開いたとき空なら初期人数を入れる」作り（→ generateRecruits）。
+    // 開く前に出会うと空でなくなり、ふつうの応募者が来ないままになるので、先に埋めておく
+    if (this.recruitPool.length === 0) this.refillRecruitPool(COACHING.recruit.initialCount);
+    const q = rollMeetCoachQuality(tier, this.rand);
+    const coach = makeCoach(this.rand, this.nextCoachId++, q);
+    const cand: RecruitCandidate = {
+      coach,
+      cost: COACHING.recruit.baseCostByQuality[q] ?? 20,
+      since: this.monthCount,
+      metAt: comp.name,
+    };
+    this.recruitPool.push(cand);
+    this.trimRecruitPool();
+    return cand;
   }
 
   /**
@@ -5639,6 +5710,7 @@ export class GameState {
         entryCost: 0,
         passion: 0,
         mayorPrize: 0,
+        coachMet: null,
       };
     }
 
@@ -5732,7 +5804,9 @@ export class GameState {
 
     const top = bestEntrant(outcome);
     const best = top ? (entries.find((e) => e.entrant.studentId === top.studentId) ?? null) : null;
-    return { outcome, entries, best, totalGems, totalPopularity, entryCost, passion, mayorPrize };
+    // 記録会に出ると、たまにコーチと出会う（→ MEET_COACH）
+    const coachMet = isTimeTrial(comp) ? this.rollMeetCoach(comp) : null;
+    return { outcome, entries, best, totalGems, totalPopularity, entryCost, passion, mayorPrize, coachMet };
   }
 
   // -------------------------------------------------------------- リレー（12月の世界選手権）

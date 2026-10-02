@@ -204,6 +204,13 @@ export interface Equipment {
    * 部屋の中身（什器・レーン・席）は「回す前の向き」の相対位置で持ち、roomPoint で置き換える。
    */
   rot?: RoomRot;
+  /**
+   * 買ったときに払った額（撤去の返金はここから出す → MAP.sellRefund）。
+   * 開始時から建っている部屋は 0（ただでもらったものは返金しない）。
+   * 【今の値段で返金しない理由】2026-10-02 に部屋を約5倍に値上げした。今の値段で返すと、
+   * 値上げ前に安く建てた部屋を撤去するだけで、払った額より多く戻ってきてしまう。
+   */
+  paid?: number;
 }
 
 /** 部屋の向き（0＝買ったときのまま／1＝縦横を入れ替えた）。 */
@@ -505,6 +512,12 @@ export function trainerKinds(items: readonly Equipment[]): RoomKind[] {
  *   費用 = 基本費 × growth^(すでに持っている数)
  */
 export function equipmentCostAt(kind: RoomKind, owned: number): number {
+  const room = EQUIPMENT.rooms[kind] as { costStep?: number; startOwned?: number };
+  // プールは決まった額ずつ上がる。開始時から建っているぶんは段に数えない
+  if (room.costStep != null) {
+    const n = Math.max(0, owned - (room.startOwned ?? 0));
+    return EQUIPMENT_DEFS[kind].cost + room.costStep * n;
+  }
   return Math.round(EQUIPMENT_DEFS[kind].cost * Math.pow(costGrowthOf(kind), Math.max(0, owned)));
 }
 

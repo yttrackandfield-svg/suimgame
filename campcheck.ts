@@ -139,11 +139,12 @@ check("鈍りが取れると悪化しない", cured <= dullFactor, `×${cured.to
 
 line("\n=== 7. 専門スタッフ ===");
 check("部屋が無いと雇えない", !st.canHireStaff("nutritionist").ok, st.canHireStaff("nutritionist").reason ?? "");
-st.gems = 5000;
 // 食堂・クリニックを建てる土地を確保する（初期の10×10はプールでほぼ埋まっている）。
-// 敷地は 2026-09-23 に値上げ（5,000 → 10,000 → 100,000 → 200,000）したので、そのつど足す
-while (st.expandLand().ok) st.gems = 300_000;
-st.gems = 5000;
+// 敷地は 2026-10-02 に値上げ（10万 → 25万 → 50万 → 100万 → 300万）したので、そのつど足す
+st.gems = 99_999_999;
+while (st.expandLand().ok) st.gems = 99_999_999;
+// 部屋も 2026-10-02 に約5倍（食堂・ドクタールーム 各◆5,000）。2つ建てて雇える額にする
+st.gems = 12_000;
 st.buyEquipment("cafeteria");
 st.buyEquipment("clinic");
 check("食堂を建てると雇える", st.canHireStaff("nutritionist").ok);

@@ -735,6 +735,21 @@ const STEPS: Record<number, MigrationStep> = {
   30: (d) => ({ ...d, version: 31, game: { ...(d.game as RawSave), roomUse: [] } }),
 
   /**
+   * v31 → v32：施設の値上げ（2026-10-02）。
+   *
+   * 撤去の返金を「今の値段」から「払った額」に変えたので、建っている部屋に払った額を入れる。
+   * 何棟目に買ったかまでは分からないので、**値上げ前の基本の値段**で入れる（返金が少なめに出る側）。
+   * 所持金と建っている部屋はそのまま。読み込んだら一度だけ値上げのお知らせを出す。
+   */
+  31: (d) => {
+    const game = { ...(d.game as RawSave) };
+    const equipment = Array.isArray(game.equipment) ? (game.equipment as RawSave[]) : [];
+    game.equipment = equipment.map((e) => ({ ...e, paid: V31_ROOM_COST[String(e.kind)] ?? 0 }));
+    game.priceRevisedNotice = true;
+    return { ...d, version: 32, game };
+  },
+
+  /**
    * v29 → v30：退会の予告（leaveAtMonth）を追加。
    *
    * 古いセーブには予告が無いので、全員「予定なし」から始める。
@@ -748,6 +763,32 @@ const STEPS: Record<number, MigrationStep> = {
     game.students = students.map((s) => ({ ...s, leaveAtMonth: null }));
     return { ...d, version: 30, game };
   },
+};
+
+/** v31 当時の部屋の基本の値段（移行の結果を変えないよう直書き）。 */
+const V31_ROOM_COST: Record<string, number> = {
+  pool6: 2800,
+  pool8: 50000,
+  pool10: 1_000_000,
+  science: 1_000_000,
+  altitudeLab: 1_000_000,
+  dorm: 1_000_000,
+  studio: 760,
+  gym: 820,
+  recovery: 900,
+  meeting: 1100,
+  coachroom: 700,
+  cafeteria: 980,
+  bath: 1600,
+  sauna: 900,
+  openair: 700,
+  cafe: 720,
+  lounge: 640,
+  kids: 480,
+  vending: 180,
+  shop: 560,
+  clinic: 1050,
+  entrance: 320,
 };
 
 /** v27 当時の学年の並び（移行の結果を変えないよう直書き）。 */

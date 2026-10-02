@@ -3,7 +3,7 @@ import type { ClassFitStatus, StatKey, Stroke, Student } from "./student";
 import { STAT_LABEL, STROKE_KEYS, STROKE_LABEL } from "./student";
 import { GROWTH_LABEL, growthHintLevel, type GrowthType, type LifeStage } from "./growth";
 import { CONDITION_LABEL, type ConditionLevel } from "./condition";
-import { COACH, COACHING } from "../config/balance";
+import { COACH, COACHING, MEET_COACH } from "../config/balance";
 
 /**
  * コーチ。質（1〜5）が成長スピードとコメントの的確さに効く。
@@ -185,79 +185,72 @@ export function makeCoach(rand: () => number, id: number, quality?: number, spec
 }
 
 /**
- * 募集候補。クラブ力（人気度＋通算優勝＋クラブの格）が高いほど質の期待値が上がる。
- *
- * さらに格ごとの下限（COACH.recruitMinTier）があり、クラブの格が足りないと
- * その格のコーチはそもそも現れない。レジェンドは名門クラブにしか来ない。
- * strength / clubTier は呼び出し側（GameState）が算出する。
+ * 募集に応募してくるコーチの格の並び（クラブの格ごと → COACHING.recruit.byClubTier）。
+ * 表に無い格は、そのまま一番近い格の並びを使う。
  */
-export function makeRecruitCandidate(
-  rand: () => number,
-  id: number,
-  strength: number,
-  clubTier = 1,
-  popularity = 0,
-): Coach {
-  /**
-   * 期待される格。
-   *
-   * 【頭打ちさせない】以前は `1 + clubStrength/55` で、クラブ力が 220 を超えると
-   * 期待値が最大格を振り切り、**候補が全員トップコーチ**になっていた
-   *（実測：クラブ力678 で100人抽選して質4が100人）。「同じレベルの人しか来ない」の正体はこれ。
-   * 伸びを緩くしたうえで、最大格の少し手前で止める。こうすると強いクラブでも
-   * 「見習いから伝説まで混ざった名簿」になり、選ぶ意味が残る。
-   */
-  const expected = Math.min(
-    COACH_MAX_GRADE - 0.5,
-    1 + strength / COACHING.recruit.strengthPerQuality,
-  );
-  /**
-   * 【同じ格ばかりにならないように】以前は ±1 の一様乱数を足して四捨五入していた。
-   * 期待値が 2.4 のクラブでは候補がほぼ全員「2」になり、何人見ても同じ顔ぶれだった。
-   *
-   * いまは一様乱数を3つ足して**釣鐘形（おおよそ正規分布・標準偏差1）**にし、
-   * それを qualitySpread 倍して散らす。期待値まわりがいちばん出やすいのは同じだが、
-   * ±2格ぶんまでは普通に現れる＝「今月は当たりが来た」が起こる。
-   */
-  const bell = (rand() + rand() + rand() - 1.5) * 2;
-  let q = Math.max(1, Math.min(COACH_MAX_GRADE, Math.round(expected + bell * COACHING.recruit.qualitySpread)));
-  // クラブの格・人気度が足りない格は現れない（届く範囲まで落とす）。
-  // トップコーチは全国区、レジェンドは日本の名門にならないと来ない。
-  while (q > 1 && !coachGradeAvailable(q, clubTier, popularity)) q--;
-  return makeCoach(rand, id, q);
-}
-
-/** その格のコーチが現れるのに必要なクラブの格。 */
-export function coachGradeMinTier(quality: number): number {
-  return COACH.recruitMinTier[Math.round(quality)] ?? 1;
-}
-
-/** その格のコーチが現れるのに必要な人気度。 */
-export function coachGradeMinPopularity(quality: number): number {
-  return COACH.recruitMinPop[Math.round(quality)] ?? 0;
-}
-
-/** いまのクラブに、その格のコーチが現れうるか。 */
-export function coachGradeAvailable(quality: number, clubTier: number, popularity: number): boolean {
-  return coachGradeMinTier(quality) <= clubTier && coachGradeMinPopularity(quality) <= popularity;
+function recruitCycleOf(clubTier: number): readonly number[] {
+  const table = COACHING.recruit.byClubTier;
+  const tiers = Object.keys(table).map(Number).sort((a, b) => a - b);
+  const t = tiers.reduce((best, x) => (x <= clubTier ? x : best), tiers[0]);
+  return table[t];
 }
 
 /**
- * まだ現れない格の説明（募集画面に出して、目標を示す）。
- * 「レジェンドはクラブの格が足りない」と分かれば、何を目指せばよいかが伝わる。
+ * 今月の応募者の格（**抽選しない**。クラブの格で決まった並びを順に回す）。
+ *
+ * monthCount（通算の月）から並びのどこを使うかを決めるので、
+ * 同じ格のクラブなら「2ヶ月に1人、名コーチが来る」のように毎月の顔ぶれが読める。
+ * tierBoost は合宿の「名コーチとの出会い」で、次の1回だけ1つ上の格の並びを使う。
  */
-export function coachGradeLockedNote(clubTier: number, popularity: number): string | null {
-  for (let q = COACH_MAX_GRADE; q >= 2; q--) {
-    if (coachGradeAvailable(q, clubTier, popularity)) return null;
-    const needTier = coachGradeMinTier(q) > clubTier;
-    const needPop = coachGradeMinPopularity(q) > popularity;
-    if (!needTier && !needPop) continue;
-    const parts: string[] = [];
-    if (needTier) parts.push(`クラブの格 ${coachGradeMinTier(q)}以上`);
-    if (needPop) parts.push(`人気度 ${coachGradeMinPopularity(q)}以上`);
-    return `${COACH.grades[q - 1].label}が来るには ${parts.join("・")} が要る`;
+export function recruitQualitiesFor(clubTier: number, monthCount: number, count: number, tierBoost = 0): number[] {
+  const cycle = recruitCycleOf(Math.round(clubTier) + tierBoost);
+  const out: number[] = [];
+  const start = Math.max(0, Math.floor(monthCount)) * count;
+  for (let i = 0; i < count; i++) out.push(cycle[(start + i) % cycle.length]);
+  return out;
+}
+
+/** 募集に来るいちばん上の格（そのクラブの格のとき）。 */
+export function recruitTopQuality(clubTier: number): number {
+  return Math.max(...recruitCycleOf(Math.round(clubTier)));
+}
+
+/** その格のコーチが募集に来はじめるクラブの格（募集では来ない格は null）。 */
+export function coachGradeMinTier(quality: number): number | null {
+  const table = COACHING.recruit.byClubTier;
+  const tiers = Object.keys(table).map(Number).sort((a, b) => a - b);
+  for (const t of tiers) if (table[t].includes(Math.round(quality))) return t;
+  return null;
+}
+
+/**
+ * 次に募集に来るようになる格の案内（募集画面に出して、目標を示す）。
+ * 例：「トップコーチが応募してくるのはクラブの格4から」。全部来ているなら null。
+ */
+export function coachGradeLockedNote(clubTier: number): string | null {
+  const top = recruitTopQuality(clubTier);
+  for (let q = top + 1; q <= COACH_MAX_GRADE; q++) {
+    const need = coachGradeMinTier(q);
+    if (need != null) return `${COACH.grades[q - 1].label}が応募してくるのはクラブの格${need}から`;
   }
   return null;
+}
+
+/**
+ * 記録会での出会い（→ MEET_COACH）で会えるコーチの格を、その段の重みから1つ引く。
+ * tier は記録会の段（0＝地区 … 5＝世界）。
+ */
+export function rollMeetCoachQuality(tier: number, rand: () => number): number {
+  const rows = MEET_COACH.byTier;
+  const row = rows[Math.max(0, Math.min(rows.length - 1, Math.floor(tier)))];
+  const entries = Object.entries(row).map(([q, w]) => [Number(q), w] as const);
+  const total = entries.reduce((a, [, w]) => a + w, 0);
+  let r = rand() * total;
+  for (const [q, w] of entries) {
+    r -= w;
+    if (r < 0) return q;
+  }
+  return entries[entries.length - 1][0];
 }
 
 // ------------------------------------------------------------ 練習後コメント

@@ -1250,7 +1250,7 @@ head("9. 導線の良さ");
 
 head(`10. セーブ v${SAVE_VERSION}`);
 {
-  ok(SAVE_VERSION === 31, "セーブバージョンが31（v31＝部屋の利用回数と合宿の記録）", `${SAVE_VERSION}`);
+  ok(SAVE_VERSION === 32, "セーブバージョンが32（v32＝施設の値上げ・払った額・記録会のコーチとの出会い）", `${SAVE_VERSION}`);
 
   const st = newGame();
   readyForBigFacility(st);

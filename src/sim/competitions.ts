@@ -1,7 +1,7 @@
 import { canEnterCompetition, canEnterTimeTrial, type ClassId } from "./classes";
 import { lifeStageOf, type LifeStage } from "./growth";
 import { meetsStandard, type StandardKey } from "../data/standardTimes";
-import { GENERAL_RIVAL, ROUTE_RIVAL_ADJUST, SCALE_AWAY_DAYS, SCALE_FINAL_WALL, SCALE_REWARD, SCALE_RIVAL_LEVEL } from "../config/balance";
+import { GENERAL_RIVAL, RIVAL_LEVEL_FLOOR, ROUTE_RIVAL_ADJUST, SCALE_AWAY_DAYS, SCALE_FINAL_WALL, SCALE_REWARD, SCALE_RIVAL_LEVEL } from "../config/balance";
 import { CORE_STROKES, STROKE_DISTANCES, type RaceEvent, type Student } from "./student";
 import { placementLabelOf, type EntrantOutcome } from "./race";
 
@@ -164,7 +164,7 @@ export function rivalLevelOf(comp: Competition): number {
   // 日本選手権・アジア・世界は専用の表（→ GENERAL_RIVAL）
   const gen = generalRival(comp);
   if (gen) return gen.level;
-  return Math.max(6, SCALE_RIVAL_LEVEL[comp.scale] + (ROUTE_RIVAL_ADJUST[comp.route] ?? 0));
+  return Math.max(RIVAL_LEVEL_FLOOR, SCALE_RIVAL_LEVEL[comp.scale] + (ROUTE_RIVAL_ADJUST[comp.route] ?? 0));
 }
 
 /** 決勝で相手が強くなる量（→ SCALE_FINAL_WALL／一般ルートは GENERAL_RIVAL）。 */

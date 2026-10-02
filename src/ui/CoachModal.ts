@@ -3,7 +3,6 @@ import {
   coachGradeColor,
   coachGradeLabel,
   coachGradeLockedNote,
-  coachGradeMinTier,
   coachRankLabel,
   coachSalary,
   coachSpecialtyLabel,
@@ -243,8 +242,8 @@ export class CoachModal {
     return btn;
   }
 
-  /** 【見た目確認】募集のタブを開いた状態にする（?dev=facility&open=coach:recruit）。 */
-  devShowRecruit(): void {
+  /** 募集のタブを開いた状態にする（記録会の出会いのお知らせ・?dev=facility&open=coach:recruit）。 */
+  showRecruit(): void {
     this.setMode("recruit");
   }
 
@@ -485,14 +484,14 @@ export class CoachModal {
   // ------------------------------------------------------------- 募集
 
   private renderRecruit(): void {
-    this.headerText.setText(`クラブ力 ${Math.round(this.state.clubStrength())}　所持 ◆${gemsText(this.state.gems)}　（成績が上がると良いコーチが集まる）`);
+    const tier = this.state.clubTier();
+    this.headerText.setText(`クラブの格 ${tier}「${clubRankShort(tier)}」　所持 ◆${gemsText(this.state.gems)}`);
 
-    // 上の格ほど高いクラブの格・人気度を要求する。レジェンドは名門クラブにしか来ない。
-    const legendTier = coachGradeMinTier(5);
-    const locked = coachGradeLockedNote(this.state.clubTier(), this.state.popularity);
+    // 応募者の格はクラブの格で決まる（抽選しない）。レジェンドは記録会の出会いでしか来ない。
+    const locked = coachGradeLockedNote(tier);
     this.hintText.setText(
-      `応募は毎月${COACHING.recruit.perMonth}人ずつ積み上がり、${COACHING.recruit.expireMonths}ヶ月で他所へ行く（引き直しは無い）。` +
-        `レジェンドは「${clubRankShort(legendTier)}」以上のクラブにしか来ない。` +
+      `応募は毎月${COACHING.recruit.perMonth}人ずつ積み上がり、${COACHING.recruit.expireMonths}ヶ月で他所へ行く。クラブの格が上がると良いコーチが応募してくる。` +
+        `レジェンドは記録会での出会いでしか会えない（上の段の記録会ほど良いコーチに出会う）。` +
         (locked ? `\n⚠ ${locked}` : ""),
     );
 
@@ -510,9 +509,10 @@ export class CoachModal {
   }
 
   private buildCandidateRow(cand: RecruitCandidate, y: number, rh: number): void {
+    // 記録会で出会ったコーチは金の縁で目立たせる（めったに来ない・ここでしか会えない格がある）
     const rect = this.scene.add
       .rectangle(this.PW / 2, y + rh / 2, this.PW - 40, rh - 10, 0x1c3550, 1)
-      .setStrokeStyle(1, 0x2e4a66, 1);
+      .setStrokeStyle(cand.metAt ? 2 : 1, cand.metAt ? 0xf7dc6f : 0x2e4a66, 1);
     this.listLayer.add(rect);
 
     const c = cand.coach;
@@ -540,7 +540,8 @@ export class CoachModal {
     mk(left, y + 8, c.name, "#ffffff", 17, true);
     mk(textRight, y + 10, coachGradeLabel(c.quality), coachGradeColor(c.quality), 15, true, 1);
 
-    mk(left, y + 32, `${coachRankLabel(c.quality)}・専門：${coachSpecialtyLabel(c)}`, "#aed6f1", 12.5);
+    if (cand.metAt) mk(left, y + 32, `🤝 ${cand.metAt}で出会った・専門：${coachSpecialtyLabel(c)}`, "#f7dc6f", 12.5);
+    else mk(left, y + 32, `${coachRankLabel(c.quality)}・専門：${coachSpecialtyLabel(c)}`, "#aed6f1", 12.5);
 
     // 一時金だけでなく**月給**も出す。人件費がいちばん重い固定費になったので、
     // 「雇えるか」ではなく「毎月払えるか」で選ばせたい。

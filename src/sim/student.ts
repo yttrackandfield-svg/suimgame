@@ -1268,6 +1268,8 @@ const GIFTED_GROWTH: readonly GrowthType[] = ["early", "late", "sustained", "nor
 export interface StudentGenOptions {
   /** true にすると才能ある子として生成（初期値ではなく成長タイプ＋伸びしろが優秀）。 */
   gifted?: boolean;
+  /** 初期能力の目安を上書きする（ゲーム開始時の名簿だけが使う → START.classBase）。 */
+  base?: number;
 }
 
 /**
@@ -1296,7 +1298,7 @@ export function createStudent(
   const distance = pick(STROKE_DISTANCES[stroke]);
   const fav: RaceEvent = { stroke, distance };
 
-  const base = GEN.classBase[classId];
+  const base = opts.base ?? GEN.classBase[classId];
   const mkStat = (bias = 0): number =>
     clamp(base + bias + between(-GEN.statJitter, GEN.statJitter), GEN.statMin, GEN.statMax);
 

@@ -15,7 +15,7 @@ import type { GrowthType } from "../sim/growth";
  */
 
 /** 現行のセーブデータバージョン。構造を変えたら +1 して migrate.ts にステップを足す。 */
-export const SAVE_VERSION = 31;
+export const SAVE_VERSION = 32;
 
 /** セーブ枠の数（設計：3枠）。 */
 export const SLOT_COUNT = 3;
@@ -134,6 +134,11 @@ export interface EquipmentSaveV9 extends EquipmentSaveV2 {
    * 足しただけで古いセーブは「省略」として読めるので、版は上げていない。
    */
   rot?: number;
+  /**
+   * v32：買ったときに払った額（撤去の返金のもと）。
+   * v31 以前の部屋には、その当時の基本の値段を入れる（→ migrate 31）。
+   */
+  paid?: number;
 }
 
 /** v9 の時間割の1コマ。 */
@@ -726,6 +731,8 @@ export interface RecruitSaveV28 {
   cost: number;
   /** 名簿に載った通算月（GameState.monthCount）。ここから expireMonths で消える。 */
   since: number;
+  /** v32：記録会で出会ったコーチなら、その記録会の名前。 */
+  metAt?: string;
 }
 
 export interface GameSaveV28 extends GameSaveV27 {
@@ -810,8 +817,28 @@ export interface SaveDataV31 extends Omit<SaveDataV30, "version" | "game"> {
   game: GameSaveV31;
 }
 
+/**
+ * v32（2026-10-02）：施設の値上げ。
+ *  - equipment[].paid … 買ったときに払った額（撤去の返金のもと）
+ *  - priceRevisedNotice … 値上げ前のセーブを読み込んだ印（一度だけお知らせを出す）
+ *  - meetCoach* … 記録会でのコーチとの出会い（天井の数・今月抽選した記録会・最後に出会った月）
+ *  - recruitPool[].metAt … 記録会で出会ったコーチの印（その記録会の名前）
+ * どれも省略できる（無ければ「まだ何も無い」として読む）。
+ */
+export interface GameSaveV32 extends GameSaveV31 {
+  priceRevisedNotice?: boolean;
+  meetCoachMiss?: number;
+  meetCoachRolled?: string[];
+  meetCoachMetMonth?: number;
+}
+
+export interface SaveDataV32 extends Omit<SaveDataV31, "version" | "game"> {
+  version: 32;
+  game: GameSaveV32;
+}
+
 /** 現行バージョンのセーブデータ（コード側はこの型だけを扱う）。 */
-export type SaveData = SaveDataV31;
+export type SaveData = SaveDataV32;
 
 /**
  * 枠一覧に出す概要。フルデータとは別キーで保存しておき、

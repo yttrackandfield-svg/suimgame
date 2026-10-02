@@ -176,7 +176,7 @@ export class MeetScene extends Phaser.Scene {
     this.relay = data.resolveRelay ? (data.resolveRelay() ?? undefined) : undefined;
     // リレーのときは個人種目の結果を作らない（resolve は呼ばない）
     this.result = this.relay
-      ? { outcome: { heat: [], final: null, entrants: [] }, entries: [], best: null, totalGems: 0, totalPopularity: 0, entryCost: 0, passion: 0, mayorPrize: 0 }
+      ? { outcome: { heat: [], final: null, entrants: [] }, entries: [], best: null, totalGems: 0, totalPopularity: 0, entryCost: 0, passion: 0, mayorPrize: 0, coachMet: null }
       : data.resolve();
     this.relayLanes = [];
     this.lanes = [];
