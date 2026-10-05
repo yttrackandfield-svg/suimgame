@@ -173,10 +173,10 @@ head("A-1. 所持ジェムは1箇所（整数・どこから見ても同じ）")
   while (st2.expandLand().ok) st2.gems = 5000;
   st2.buyEquipment("shop");
   st2.gems = 5000;
-  const fin = st2.monthlyFinance();
   const before = st2.gems;
-  st2.advanceMonth();
-  const expected = before + fin.tuition + fin.shop - (fin.upkeep + fin.salary + fin.dorm);
+  // 内訳は月末の記録会のあと（プロの格が上がれば契約金も変わる）に締めるので、レポートの値で照らす
+  const fin = st2.advanceMonth().finance;
+  const expected = before + fin.tuition + fin.shop - (fin.upkeep + fin.salary + fin.dorm + fin.proSalary);
   ok(fin.shop > 0, "売店の売上が計上されている", `+${fin.shop}`);
   ok(Math.abs(st2.gems - expected) <= 1, "レポートの内訳どおりにジェムが動く", `◆${st2.gems} / 見込み ◆${expected}`);
 }
@@ -1202,7 +1202,7 @@ head("序盤の手ごたえ（初日に決めることがあるか）");
 {
   const st = newGame();
   const fin = st.monthlyFinance();
-  const net = fin.tuition + fin.shop - (fin.upkeep + fin.salary + fin.dorm);
+  const net = fin.tuition + fin.shop - (fin.upkeep + fin.salary + fin.dorm + fin.proSalary);
   console.log(`  1ヶ月目の月収 ◆${net}／地区記録会の優勝 ◆${SCALE_REWARD.kirokukai.gems}`);
 
   // 初日から出られる大会があること（記録会は参加料がほぼ無料で、毎月開かれている）

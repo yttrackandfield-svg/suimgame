@@ -76,6 +76,13 @@ export interface PlayerCardEnv {
    * 省略すると★そのものを出さない（見るだけの場面で押させないため）。
    */
   togglePin?: () => { ok: boolean; pinned: boolean; reason?: string };
+  /**
+   * プロの契約金（クラブが毎月払う額 → PRO_SALARY）。プロ以外は渡さない。
+   * 格が上がると上がるので、「この子をプロで抱え続けるか」を決める材料としてカードに出す。
+   */
+  proSalary?: number;
+  /** 合宿に出かけているなら、帰ってくるまでの週（いなければ渡さない）。 */
+  campWeeksLeft?: number;
 }
 
 /** 前後の選手へ移る（名簿の並び順）。無ければボタンは灰色のまま。 */
@@ -895,6 +902,12 @@ export class PlayerCardModal {
     );
     y = this.row(y, "寮", s.inDorm ? "入っている" : "入っていない", s.inDorm ? "#2ecc71" : "#95a6b8");
     y = this.row(y, "遠征", s.awayDays > 0 ? `あと ${Math.ceil(s.awayDays)} 週` : "なし", s.awayDays > 0 ? "#f5b041" : "#95a6b8");
+    if (this.env.campWeeksLeft != null) {
+      y = this.row(y, "合宿", `合宿中　あと ${this.env.campWeeksLeft} 週`, "#e8c07a");
+    }
+    if (this.env.proSalary != null) {
+      y = this.row(y, "契約金", `◆${this.env.proSalary.toLocaleString()} / 月（クラブが払う）`, "#f5b041");
+    }
     return y + 6;
   }
 

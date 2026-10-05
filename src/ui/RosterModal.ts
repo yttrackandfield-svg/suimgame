@@ -75,8 +75,9 @@ const SORT_LABEL: Record<RosterSort, string> = {
  * 一覧の切り替え。クラスのほかに2つ。
  *   all    … 全クラスを混ぜて出す
  *   pinned … ★を付けた選手だけ（HUD の札から飛んでくる先）
+ *   group  … 呼び出し側が渡した顔ぶれだけ（「今回入会した子」など）。タブには出ない
  */
-type TabId = ClassId | "all" | "pinned";
+type TabId = ClassId | "all" | "pinned" | "group";
 
 /** タブの並び（選択状態を回すときに使う）。 */
 const TAB_IDS: TabId[] = ["all", ...CLASS_ORDER.map((c) => c.id), "pinned"];
@@ -159,6 +160,9 @@ export class RosterModal {
   private readonly SUB_W = 246 - (24 + PORTRAIT_SIZE + 10) - 8;
 
   private classId: TabId = "youji";
+  /** group の一覧の見出しと顔ぶれ（→ showGroup）。 */
+  private groupTitle = "";
+  private groupIds: number[] = [];
   private sort: RosterSort = "roster";
   private sortBtn!: Button;
   private page = 0;
@@ -275,11 +279,27 @@ export class RosterModal {
     flushInput(this.scene);
   }
 
+  /**
+   * 渡した顔ぶれだけの一覧を開く（例：キャンペーンで今回入会した子）。
+   * 「入会12人」と数だけ出されても誰が来たのか分からないので、お祝いの帯から直接ここへ来られるようにしてある。
+   * 行をタップすればいつもどおりカード（能力・才能・プロフィール）が開き、「◀ 名簿」でこの一覧に戻る。
+   */
+  showGroup(title: string, ids: readonly number[]): void {
+    this.groupTitle = title;
+    this.groupIds = [...ids];
+    this.selectClass("group");
+    this.setShown(true);
+    this.renderRows();
+    flushInput(this.scene);
+  }
+
   show(focus?: Student): void {
     if (focus) {
-      // ★の一覧から見に行った子は、戻ってきても★の一覧のまま
-      //（クラスのタブに飛ばすと、3人だけの一覧に戻る道が無くなる）
-      if (this.classId !== "pinned" || !focus.pinned) this.classId = focus.classId;
+      // ★の一覧・渡された顔ぶれの一覧から見に行った子は、戻ってきても同じ一覧のまま
+      //（クラスのタブに飛ばすと、その顔ぶれの一覧に戻る道が無くなる）
+      const stay =
+        (this.classId === "pinned" && focus.pinned) || (this.classId === "group" && this.groupIds.includes(focus.id));
+      if (!stay) this.classId = focus.classId;
       for (const t of TAB_IDS) this.tabBtns[t]?.setSelected(t === this.classId);
       this.multiBtn.setEnabled(true);
       const i = this.sortedList().indexOf(focus);
@@ -487,7 +507,7 @@ export class RosterModal {
   private promotePicked(): void {
     // クラスが混ざる一覧（全員・★注目）では、まとめて昇格は使わせない
     // （行き先がひとつに決まらないため。ボタン自体も selectClass で無効にしてある）
-    if (this.classId === "all" || this.classId === "pinned") return;
+    if (this.classId === "all" || this.classId === "pinned" || this.classId === "group") return;
     const targets = this.state.students[this.classId].filter((s) => this.picked.has(s.id));
     if (targets.length === 0) {
       this.hintText.setText("まだ誰も選んでいない").setColor("#e59866");
@@ -531,7 +551,9 @@ export class RosterModal {
         ? CLASS_ORDER.flatMap((c) => this.state.students[c.id])
         : this.classId === "pinned"
           ? this.state.pinnedStudents()
-          : this.state.students[this.classId];
+          : this.classId === "group"
+            ? this.groupStudents()
+            : this.state.students[this.classId];
     if (this.sort === "roster") return [...src];
     const arr = [...src];
     const classIndex = (s: Student): number => CLASS_ORDER.findIndex((c) => c.id === s.classId);
@@ -560,13 +582,19 @@ export class RosterModal {
     return arr;
   }
 
+  /** group の顔ぶれのうち、いま在籍している子。退会・引退した子は出さない。 */
+  private groupStudents(): Student[] {
+    const want = new Set(this.groupIds);
+    return CLASS_ORDER.flatMap((c) => this.state.students[c.id]).filter((s) => want.has(s.id));
+  }
+
   private selectClass(id: TabId): void {
     this.classId = id;
     this.page = 0;
     this.picked.clear(); // クラスをまたいだ選択は持ち越さない
     for (const t of TAB_IDS) this.tabBtns[t]?.setSelected(t === id);
     // クラスが混ざる一覧（全員・★注目）では、まとめて昇格は使えない
-    const mixed = id === "all" || id === "pinned";
+    const mixed = id === "all" || id === "pinned" || id === "group";
     if (mixed && this.multi) this.toggleMulti();
     this.multiBtn.setEnabled(!mixed);
     this.renderRows();
@@ -586,6 +614,8 @@ export class RosterModal {
       this.titleText.setText(`名簿　全員　${arr.length}人　（無理なく見られる規模 ${this.state.comfortableSize()}人）`);
     } else if (this.classId === "pinned") {
       this.titleText.setText(`名簿　★注目の選手　${arr.length} / ${PIN_MAX}人`);
+    } else if (this.classId === "group") {
+      this.titleText.setText(`${this.groupTitle}　${arr.length}人`);
     } else {
       const label = classLabel(this.classId);
       // スクールの上限は開講したコマで決まるので「在籍 / 上限」で見せる
@@ -605,7 +635,9 @@ export class RosterModal {
     this.emptyText.setText(
       this.classId === "pinned"
         ? "★を付けた選手がいません\n（名簿の行の☆を押すと、ここと HUD に出ます）"
-        : "在籍者がいません\n（昇格・入会で増やそう）",
+        : this.classId === "group"
+          ? "もう在籍していません"
+          : "在籍者がいません\n（昇格・入会で増やそう）",
     );
     this.emptyText.setVisible(arr.length === 0);
 

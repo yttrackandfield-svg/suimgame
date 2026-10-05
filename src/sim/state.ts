@@ -73,6 +73,7 @@ import {
   altitudeTimeFactor,
   campDef,
   campWeight,
+  campWeeks,
   intensityOption,
   isSprinter,
   rollCampEvent,
@@ -303,6 +304,7 @@ import {
 import {
   addAchievement,
   competitionPoints,
+  rankOf,
   recordTime,
   refreshRank,
   standardPoints,
@@ -330,6 +332,7 @@ import {
   BIG_FACILITY,
   TRAINING_ROOM,
   INCOME,
+  PRO_SALARY,
   INJURY,
   INTAKE,
   MAX_MEET_ENTRIES,
@@ -423,6 +426,8 @@ export interface ShortCourseResult {
   newGakudo?: number;
   talented?: boolean;
   turnedAway?: number;
+  /** 今回入会した子の id（お祝いの帯から一覧を開くのに使う）。 */
+  newIds?: number[];
 }
 
 export interface CampEligibility {
@@ -454,6 +459,8 @@ export interface CampRecord {
 
 export interface CampOutcome {
   student: Student;
+  /** 出発前の能力（帰ってきた画面で「前 → 後」を出すのに使う）。 */
+  before: Record<StatKey, number>;
   mult: number; // 実際に適用された効果倍率
   injured: boolean; // 故障が起きた
   gains: Record<StatKey, number>;
@@ -492,6 +499,31 @@ export interface CampRunResult {
   ok: boolean;
   reason?: string;
   cost: number;
+  /** 何週の合宿に出たか（出発できなければ 0）。 */
+  weeks: number;
+}
+
+/**
+ * 出発した合宿（2026-10-05）。終わるまで参加者はクラブを空ける。
+ *
+ * 以前は合宿を押したその場で伸びが付いていたので、「合宿に行った」感じがしなかった。
+ * いまは期間（CAMP.minWeeks 以上・行き先で延びる）のあいだ選手がいなくなり、
+ * 最後の週が明けたときに伸びが付いて、成果の画面が出る。
+ */
+export interface ActiveCamp {
+  plan: CampPlan;
+  /** 参加者の id（途中で引退・退会した子は帰ってきたときに飛ばす）。 */
+  ids: number[];
+  /** 全体の週数。 */
+  weeks: number;
+  /** 残りの週数（週が明けるたびに1ずつ減り、0で帰ってくる）。 */
+  weeksLeft: number;
+}
+
+/** 帰ってきた合宿の成果（画面が受け取るまで持っておく）。 */
+export interface FinishedCamp {
+  label: string;
+  weeks: number;
   outcomes: CampOutcome[];
 }
 
@@ -610,6 +642,8 @@ export interface CampaignResult {
   newGakudo?: number;
   turnedAway?: number; // 練習枠が足りず入会できなかった人数
   talented?: boolean;
+  /** 今回入会した子の id（お祝いの帯から一覧を開くのに使う）。 */
+  newIds?: number[];
 }
 
 /**
@@ -728,6 +762,8 @@ export interface MonthlyFinance {
   upkeep: number; // 設備の維持費
   dorm: number; // 入寮者の食費・光熱費
   salary: number; // コーチ・スタッフの給料
+  /** プロへの契約金（→ PRO_SALARY）。 */
+  proSalary: number;
   net: number; // 収支（＋なら黒字）
   byClass: { classId: ClassId; count: number; perHead: number; total: number }[];
 }
@@ -988,6 +1024,10 @@ export class GameState {
    * 次に誰を連れていくかを決める材料なので、**1人1件だけ**持つ（→ CampRecord）。
    */
   campLog: Record<number, CampRecord> = {};
+  /** いま出かけている合宿（無ければ null → ActiveCamp）。セーブに残す。 */
+  activeCamp: ActiveCamp | null = null;
+  /** 帰ってきたばかりの合宿の成果。画面が takeFinishedCamp で受け取る（セーブには残さない）。 */
+  private finishedCamp: FinishedCamp | null = null;
   /**
    * 【今月その部屋が使われた回数】部屋の id → のべ人数。月が替わると0に戻る。
    *
@@ -1623,7 +1663,7 @@ export class GameState {
         canUse: (poolId) => ctx.reachable(poolId),
         // 休養中・リハビリ中・大会遠征中の選手は練習に来ない。
         // 休養は「いつまで」で持っているので（→ student.isResting）、取り消せばその場で戻る。
-        attends: (s) => !isResting(s, this.dayCount) && !s.inRehab && s.awayDays <= 0,
+        attends: (s) => !isResting(s, this.dayCount) && !s.inRehab && s.awayDays <= 0 && !this.isAtCamp(s),
       },
     );
   }
@@ -2690,16 +2730,18 @@ export class GameState {
     const shop = this.shopIncome();
     const stands = this.standIncome();
     const dorm = this.dormMonthlyCost();
+    const proSalary = this.proSalaryTotal();
     return {
       tuition,
       sponsor,
       upkeep,
       salary,
+      proSalary,
       guest,
       shop,
       stands,
       dorm,
-      net: tuition + sponsor + guest + shop + stands - upkeep - salary - dorm,
+      net: tuition + sponsor + guest + shop + stands - upkeep - salary - dorm - proSalary,
       byClass,
     };
   }
@@ -2712,6 +2754,26 @@ export class GameState {
    * 「大会で勝つ → クラブの格が上がる → 資金が増える → 大型施設が建つ」
    * という輪をここで閉じている。
    */
+  /**
+   * 【プロの契約金】そのプロに毎月払う額（プロ以外は0）。
+   * 選手の格が上がるほど高く、クラブの格が上がると相場も上がる（→ PRO_SALARY）。
+   */
+  proSalaryOf(s: Student): number {
+    return s.classId === "pro" ? this.proSalaryIfPro(s) : 0;
+  }
+
+  /** その子をプロにしたら毎月いくら払うか（昇格先を選ぶ画面に出す）。 */
+  proSalaryIfPro(s: Student): number {
+    const base = PRO_SALARY.byRank[rankOf(s)] ?? 0;
+    const mult = PRO_SALARY.clubTierMult[this.clubTier()] ?? 1;
+    return Math.round((base * mult) / 10) * 10;
+  }
+
+  /** プロ全員の契約金の合計（毎月の支出）。 */
+  proSalaryTotal(): number {
+    return this.students.pro.reduce((n, s) => n + this.proSalaryOf(s), 0);
+  }
+
   sponsorIncome(): number {
     const tier = this.clubTier();
     if (tier < INCOME.sponsor.minTier) return 0;
@@ -3183,8 +3245,8 @@ export class GameState {
   meetCoachMetMonth = -1;
 
   /**
-   * 記録会に出たときの出会いの抽選（→ MEET_COACH）。
-   * 記録会1つにつき1回・出会えるのは月に1人まで。出会えたら名簿に入れて返す。
+   * 記録会で優勝したときの出会いの抽選（→ MEET_COACH）。
+   * 優勝した記録会1つにつき1回・出会えるのは月に1人まで。出会えたら名簿に入れて返す。
    */
   private rollMeetCoach(comp: Competition): RecruitCandidate | null {
     const tier = kirokukaiTierOf(comp.id);
@@ -3844,6 +3906,7 @@ export class GameState {
     if (!this.specialUnlocked(menuId)) return { ok: false, reason: "まだ研究できていない" };
     if (isInjured(s)) return { ok: false, reason: "ケガが治ってから" };
     if (s.awayDays > 0) return { ok: false, reason: "遠征中" };
+    if (this.isAtCamp(s)) return { ok: false, reason: "合宿中" };
     if (s.inRehab) return { ok: false, reason: "リハビリ中" };
     if (s.energy < energyMax(s) * SPECIAL_TRAINING.minEnergyRatio) {
       return { ok: false, reason: "体力が足りない（休ませてから）" };
@@ -4198,6 +4261,7 @@ export class GameState {
     }
     this.healInjuries();
     this.expireAltitude();
+    this.tickCamp();
   }
 
   // -------------------------------------------------------------- 格（成績で決まる8段階）
@@ -4274,7 +4338,7 @@ export class GameState {
   private enrollSchool(
     total: number,
     youjiRatio: number,
-  ): { youji: number; gakudo: number; talented: boolean; turnedAway: number } {
+  ): { youji: number; gakudo: number; talented: boolean; turnedAway: number; ids: number[] } {
     // 【1回の上限】人気度が高くても、1回のイベントで来るのはここまで（→ ENROLL.maxPerEvent）。
     // 受け入れ枠（roomIn）とは別の上限で、超えたぶんは「断った」ではなく**来ない**。
     const total0 = Math.min(ENROLL.maxPerEvent, Math.max(0, Math.round(total)));
@@ -4299,18 +4363,21 @@ export class GameState {
     const talented = added > 0 && this.rand() < talentChance;
     let giftedLeft = talented ? 1 : 0;
 
+    const ids: number[] = [];
     const make = (cls: ClassId, n: number): void => {
       for (let i = 0; i < n; i++) {
         const gifted = giftedLeft > 0 && i === 0;
         if (gifted) giftedLeft--;
-        this.students[cls].push(this.joined(createStudent(this.rand, this.nextId++, cls, { gifted })));
+        const s = this.joined(createStudent(this.rand, this.nextId++, cls, { gifted }));
+        this.students[cls].push(s);
+        ids.push(s.id);
       }
     };
     make("youji", youjiN);
     make("gakudo", gakudoN);
     this.monthEnrolled += added;
     this.monthTurnedAway += turnedAway;
-    return { youji: youjiN, gakudo: gakudoN, talented, turnedAway };
+    return { youji: youjiN, gakudo: gakudoN, talented, turnedAway, ids };
   }
 
   /** 今月の伸びを記録する（練習1回ぶんの差分を足し込む）。 */
@@ -4480,6 +4547,7 @@ export class GameState {
       newGakudo: r.gakudo,
       talented: r.talented,
       turnedAway: r.turnedAway,
+      newIds: r.ids,
     };
   }
 
@@ -4668,23 +4736,45 @@ export class GameState {
       newGakudo: r.gakudo,
       turnedAway: r.turnedAway,
       talented: r.talented,
+      newIds: r.ids,
     };
   }
 
   // -------------------------------------------------------------- 合宿
 
-  /** 合宿を今月まだひらけるか（イベントは月1回まで）。 */
+  /** 合宿を今月まだひらけるか（イベントは月1回まで・出かけている間は次を組めない）。 */
   canHoldCamp(): HoldStatus {
+    if (this.activeCamp) return { ok: false, reason: `合宿中（あと${this.activeCamp.weeksLeft}週）` };
     return this.alreadyHeld("camp") ? { ok: false, reason: "合宿は今月もう実施した" } : { ok: true };
+  }
+
+  /** その選手がいま合宿に出かけているか（練習・大会・特別練習に出ない）。 */
+  isAtCamp(s: Student): boolean {
+    return this.activeCamp?.ids.includes(s.id) ?? false;
+  }
+
+  /** 合宿に出かけている選手（名簿・合宿中の表示に使う）。 */
+  campers(): Student[] {
+    if (!this.activeCamp) return [];
+    return this.activeCamp.ids.map((id) => this.findStudent(id)).filter((s): s is Student => s != null);
+  }
+
+  /** 帰ってきた合宿の成果を受け取る（1回だけ。無ければ null）。 */
+  takeFinishedCamp(): FinishedCamp | null {
+    const f = this.finishedCamp;
+    this.finishedCamp = null;
+    return f;
   }
 
   /** この選手が今月合宿できるか。 */
   campEligible(s: Student, month = this.month): CampEligibility {
     if (isSchoolClass(s.classId)) return { ok: false, reason: "スクール生は合宿に参加できない", proOffseason: false };
-    if (s.classId === "pro") {
-      if (estimatedAge(s.grade) >= CAMP.proMinAge) return { ok: true, proOffseason: true };
-      return { ok: false, reason: "プロは18歳以上のみ", proOffseason: false };
+    // 同じ週に泳ぐ大会へエントリーしていると、合宿に出たらその大会に出られなくなる
+    if (this.pendingRaces.some((r) => r.studentIds.includes(s.id))) {
+      return { ok: false, reason: "大会にエントリー済み", proOffseason: false };
     }
+    // 18歳以上のプロは通年。高校生のプロは選手と同じく合宿の月だけ（→ CLASS_MIN_GRADE）
+    if (s.classId === "pro" && estimatedAge(s.grade) >= CAMP.proMinAge) return { ok: true, proOffseason: true };
     // 育成B / 育成A / 選手
     if ((CAMP.months as readonly number[]).includes(month)) return { ok: true, proOffseason: false };
     return { ok: false, reason: `合宿は ${CAMP.months.join("・")}月 のみ`, proOffseason: false };
@@ -4765,23 +4855,50 @@ export class GameState {
    * 費用は必ず「1人あたり × 人数」。合宿は月1回まで。
    */
   runCamp(students: Student[], plan: CampPlan): CampRunResult {
-    const def = campDef(plan.id);
+    const hold = this.canHoldCamp();
+    if (!hold.ok) return { ok: false, reason: hold.reason, cost: 0, weeks: 0 };
     const status = this.campTypeStatus(plan.id);
-    if (!status.ok) return { ok: false, reason: status.reason, cost: 0, outcomes: [] };
+    if (!status.ok) return { ok: false, reason: status.reason, cost: 0, weeks: 0 };
 
     const cost = this.campCostFor(students.length, plan.id);
-    if (this.gems < cost) return { ok: false, reason: "ジェムが足りない", cost, outcomes: [] };
+    if (this.gems < cost) return { ok: false, reason: "ジェムが足りない", cost, weeks: 0 };
 
     this.gems -= cost;
     this.markHeld("camp");
+    // 伸びは帰ってきたときに付く（→ finishCamp）。それまで参加者はクラブを空ける
+    const weeks = campWeeks(plan);
+    this.activeCamp = { plan: { ...plan }, ids: students.map((s) => s.id), weeks, weeksLeft: weeks };
+    return { ok: true, cost, weeks };
+  }
 
-    // 下山日＝実施日＋滞在日数（高地以外は滞在の概念を使わない）
-    const stay = stayOption(plan.stayDays);
-    const descentDay = this.calendarDay + (def.isAltitude ? stay.days : 0);
+  /** 週が明けるたびに呼ぶ。最後の週が明けたら帰ってきて、伸びを付ける。 */
+  private tickCamp(): void {
+    if (!this.activeCamp) return;
+    this.activeCamp.weeksLeft -= 1;
+    if (this.activeCamp.weeksLeft <= 0) this.finishCamp();
+  }
+
+  /**
+   * 合宿から帰ってきた。参加者に伸びを付けて、成果を画面へ渡す。
+   * 下山（＝帰ってきた日）から次の大会までの日数が、高地の効果帯を決める。
+   */
+  private finishCamp(): void {
+    const camp = this.activeCamp;
+    if (!camp) return;
+    this.activeCamp = null;
+    const def = campDef(camp.plan.id);
+    const students = camp.ids.map((id) => this.findStudent(id)).filter((s): s is Student => s != null);
     const { daysUntil } = this.nextMajorMeet(students);
 
     const outcomes = students.map((s) =>
-      this.applyCampTo(s, def, plan, descentDay, daysUntil, this.campEligible(s).proOffseason),
+      this.applyCampTo(
+        s,
+        def,
+        camp.plan,
+        this.calendarDay,
+        daysUntil,
+        s.classId === "pro" && estimatedAge(s.grade) >= CAMP.proMinAge,
+      ),
     );
     // 誰にどれだけ効いたかを1人ぶんずつ残す（次に連れていく子を選ぶ材料）
     for (const o of outcomes) {
@@ -4800,9 +4917,13 @@ export class GameState {
         injured: o.injured,
       };
     }
-    return { ok: true, cost, outcomes };
+    this.finishedCamp = { label: def.label, weeks: camp.weeks, outcomes };
   }
 
+  /**
+   * 1人ぶんの合宿の成果を付ける（帰ってきたときに呼ぶ）。
+   * descentDay は下山＝帰ってきた日、daysUntilMeet はそこから次の大会までの暦日数。
+   */
   private applyCampTo(
     s: Student,
     def: CampDef,
@@ -4811,6 +4932,7 @@ export class GameState {
     daysUntilMeet: number,
     proOffseason: boolean,
   ): CampOutcome {
+    const before = { ...s.stats };
     const stay = stayOption(plan.stayDays);
     const intensity = intensityOption(plan.intensity);
 
@@ -4924,9 +5046,11 @@ export class GameState {
     // --- イベントの効果 ---
     if (event) this.applyCampEvent(s, event);
 
-    const descentToMeet = def.isAltitude ? daysUntilMeet - stay.days - shift : null;
+    // 滞在はもう済んでいる（帰ってきたときに呼ぶ）ので、大会までの日数から滞在日数は引かない
+    const descentToMeet = def.isAltitude ? daysUntilMeet - shift : null;
     return {
       student: s,
+      before,
       mult,
       injured,
       gains,
@@ -5245,7 +5369,7 @@ export class GameState {
     // （一般客の利用料は来場のたびにすでに入っているので、ここでは足さない）
     // 売店を足し忘れると「収支レポートの net」と「実際のジェムの増減」が食い違う。
     this.gems += finance.tuition + finance.shop + finance.sponsor + finance.stands;
-    const due = finance.upkeep + finance.salary + finance.dorm;
+    const due = finance.upkeep + finance.salary + finance.dorm + finance.proSalary;
     const paid = Math.min(this.gems, due);
     this.gems = Math.max(0, this.gems - due);
     // 一般客の集計は月ごとにリセット
@@ -5429,6 +5553,7 @@ export class GameState {
     if (s.injuryDays > 0) return { ok: false, reason: `ケガ（あと${weeksLabel(s.injuryDays)}）` };
     // 遠征は週で数えている（→ SCALE_AWAY_DAYS）
     if (s.awayDays > 0) return { ok: false, reason: `遠征中（あと${Math.ceil(s.awayDays)}週）` };
+    if (this.activeCamp && this.isAtCamp(s)) return { ok: false, reason: `合宿中（あと${this.activeCamp.weeksLeft}週）` };
     if (chosen.some((x) => x.id === s.id)) return { ok: true };
     if (chosen.length >= this.maxRaceEntries()) return { ok: false, reason: "レーンがいっぱい" };
     if (chosen.length > 0 && chosen[0].gender !== s.gender) return { ok: false, reason: "男女別レース" };
@@ -5804,8 +5929,9 @@ export class GameState {
 
     const top = bestEntrant(outcome);
     const best = top ? (entries.find((e) => e.entrant.studentId === top.studentId) ?? null) : null;
-    // 記録会に出ると、たまにコーチと出会う（→ MEET_COACH）
-    const coachMet = isTimeTrial(comp) ? this.rollMeetCoach(comp) : null;
+    // 記録会で優勝すると、たまにコーチの目に留まる（→ MEET_COACH）。出ただけでは抽選しない
+    const wonHere = entries.some((e) => e.entrant.win);
+    const coachMet = isTimeTrial(comp) && wonHere ? this.rollMeetCoach(comp) : null;
     return { outcome, entries, best, totalGems, totalPopularity, entryCost, passion, mayorPrize, coachMet };
   }
 

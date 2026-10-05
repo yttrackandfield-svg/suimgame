@@ -1,7 +1,8 @@
 import { weeksLabel } from "../sim/weeks";
 import Phaser from "phaser";
 import { GAME_HEIGHT, GAME_WIDTH } from "../config";
-import { STAT_LABEL } from "../sim/student";
+import { STAT_KEYS, STAT_LABEL } from "../sim/student";
+import { statRank, statRankColor } from "../sim/statRank";
 import { CAMP_EVENT_COLOR, CAMP_EVENT_ICON } from "../sim/camp";
 import type { CampOutcome } from "../sim/state";
 import { Modal } from "./Modal";
@@ -27,6 +28,7 @@ export class CampResultModal {
     private readonly scene: Phaser.Scene,
     campLabel: string,
     outcomes: readonly CampOutcome[],
+    weeks: number,
     onClose: () => void,
   ) {
     const injured = outcomes.filter((o) => o.injured).length;
@@ -35,8 +37,8 @@ export class CampResultModal {
       {
         width: Math.min(524, GAME_WIDTH - 16),
         height: Math.min(760, GAME_HEIGHT - 24),
-        title: `🏕 ${campLabel}の成果`,
-        subtitle: `参加 ${outcomes.length}人${injured > 0 ? `　故障 ${injured}人` : ""}`,
+        title: `🏕 ${campLabel}から帰ってきた`,
+        subtitle: `${weeks}週間・参加 ${outcomes.length}人${injured > 0 ? `　故障 ${injured}人` : ""}　能力の変化（前 → 後）`,
         depth: 2600,
       },
       onClose,
@@ -76,17 +78,23 @@ export class CampResultModal {
       .setOrigin(1, 0);
     ty += 26;
 
-    // 伸びた能力（小数第1位まで。0.05未満は端数なので出さない）
-    const parts = (Object.keys(o.gains) as (keyof typeof o.gains)[])
-      .map((k) => ({ k, v: o.gains[k] }))
-      .filter((p) => Math.abs(p.v) >= 0.05)
-      .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
-      .map((p) => `${STAT_LABEL[p.k]} ${p.v >= 0 ? "+" : ""}${Math.round(p.v)}`)
-      .join("　");
-    const gains = this.m.text(left + 12, ty, "", 15, "#dfe6ec", false, body);
-    setJaWrap(gains, w - 24);
-    gains.setText(parts.length > 0 ? parts : "伸びは見られなかった");
-    ty += gains.height + 6;
+    // 能力の変化（行く前 → 帰ってきた後）。5つとも並べて、どこが伸びたかを見比べられるようにする
+    for (const k of STAT_KEYS) {
+      const b = o.before[k];
+      const a = o.student.stats[k];
+      const d = a - b;
+      const rb = statRank(b);
+      const ra = statRank(a);
+      this.m.text(left + 12, ty, STAT_LABEL[k], 14.5, "#9fb3c4", false, body);
+      this.m.text(left + 96, ty, `${rb} ${Math.round(b)}`, 14.5, statRankColor(rb), false, body);
+      this.m.text(left + 156, ty, "→", 14.5, "#7f8c8d", false, body);
+      this.m.text(left + 182, ty, `${ra} ${Math.round(a)}`, 14.5, statRankColor(ra), true, body);
+      const up = ra !== rb && d > 0 ? "　ランクアップ！" : "";
+      const dt = Math.abs(d) < 0.05 ? "±0" : `${d > 0 ? "+" : ""}${d.toFixed(1)}`;
+      this.m.text(left + 250, ty, `${dt}${up}`, 14.5, d > 0.05 ? "#2ecc71" : d < -0.05 ? "#e74c3c" : "#7f8c8d", d > 0.05, body);
+      ty += 21;
+    }
+    ty += 4;
 
     if (o.injured) {
       this.m.text(left + 12, ty, "⚠ 故障した（しばらく練習できない）", 14.5, "#e74c3c", true, body);

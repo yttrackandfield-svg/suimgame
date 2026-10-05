@@ -3,7 +3,8 @@
  * コーチの入手（2026-10-02）の検証。
  *
  *   1. 記録会での出会い：段ごとの格の出方（名コーチ以上だけ・上の段ほど高い・レジェンドは上の段だけ）
- *   2. 出会いの確率と天井：約20%／外れが続いても pityAfter で必ず出会う／記録会1つにつき1回・月に1人まで
+ *   2. 出会いの確率と天井：優勝した記録会だけで抽選・約3割／外れが続いても pityAfter で必ず出会う／
+ *      記録会1つにつき1回・月に1人まで／優勝しなければ天井の状態でも出会わない（2026-10-05）
  *   3. 募集名簿：応募者の格はクラブの格で決まる（抽選しない）・レジェンドは来ない
  *   4. 名簿があふれても、出会ったコーチは押し出されない
  *   5. セーブして読み込んでも、天井の数と出会いの印が残る
@@ -19,6 +20,7 @@ import { kirokukaiOf, KIROKUKAI_LADDER } from "./src/sim/competitions";
 import { recruitQualitiesFor, rollMeetCoachQuality } from "./src/sim/coach";
 import { COACHING, MEET_COACH } from "./src/config/balance";
 import { applySave, buildSave } from "./src/save/serialize";
+import { STAT_KEYS, type Student } from "./src/sim/student";
 
 let seed = 20261002;
 const rand = (): number => {
@@ -35,6 +37,17 @@ function ok(cond: boolean, label: string, detail = ""): void {
 }
 function head(s: string): void {
   console.log(`\n=== ${s} ===`);
+}
+
+/**
+ * 地区記録会で必ず優勝できるくらい強くする（出会いは優勝したときだけ抽選するので）。
+ * 速さを決める能力と、得意泳法の熟練度を上げきっておく。
+ */
+function champion(s: Student): Student {
+  for (const k of STAT_KEYS) s.stats[k] = 100;
+  s.strokeProf[s.fav.stroke] = 999;
+  s.condition = 100;
+  return s;
 }
 
 // ------------------------------------------------------------------ 1. 段ごとの格
@@ -61,7 +74,7 @@ head("1. 記録会の段ごとに出会うコーチの格");
 head("2. 出会いの確率と天井");
 {
   const st = new GameState(rand);
-  const athlete = st.students.ikuseiB[0];
+  const athlete = champion(st.students.ikuseiB[0]);
   let met = 0;
   let rolls = 0;
   let streak = 0;
@@ -74,6 +87,7 @@ head("2. 出会いの確率と天井");
     let metThisMeet = 0;
     for (let k = 0; k < 3; k++) {
       const r = st.enterCompetition([athlete], comp, athlete.fav);
+      if (!r.entries.some((e) => e.entrant.win)) ok(false, "検査の前提：地区記録会で優勝できる");
       if (r.coachMet) metThisMeet++;
     }
     rolls++;
@@ -87,12 +101,12 @@ head("2. 出会いの確率と天井");
     if (metThisMeet > 1) ok(false, "同じ記録会で2人に出会わない");
   }
   const rate = met / rolls;
-  ok(rate > 0.2 && rate < 0.3, "出会いは記録会4〜5回に1回くらい（天井込み）", `${(rate * 100).toFixed(1)}%`);
+  ok(rate > 0.3 && rate < 0.42, "出会いは優勝した記録会の3回に1回くらい（天井込み）", `${(rate * 100).toFixed(1)}%`);
   ok(maxStreak <= MEET_COACH.pityAfter, `${MEET_COACH.pityAfter}回続けて外れたら次は必ず出会う`, `最長の外れ ${maxStreak}回`);
 
   // 月に1人まで：同じ月に2つの段に出ても、出会えるのは1人
   const st2 = new GameState(rand);
-  const a2 = st2.students.ikuseiB[0];
+  const a2 = champion(st2.students.ikuseiB[0]);
   a2.season.clearedStages.push(`kk_area@${a2.fav.stroke}-${a2.fav.distance}`);
   let twice = 0;
   for (let m = 0; m < 2000; m++) {
@@ -103,6 +117,23 @@ head("2. 出会いの確率と天井");
     if (r1.coachMet && r2.coachMet) twice++;
   }
   ok(twice === 0, "同じ月に出会えるのは1人まで");
+
+  // 優勝しなければ、天井の状態でも出会わない（出場しただけでは抽選しない）
+  const st3 = new GameState(rand);
+  const weak = st3.students.ikuseiB[0];
+  for (const k of STAT_KEYS) weak.stats[k] = 1;
+  let lostMeets = 0;
+  let metWithoutWin = 0;
+  for (let m = 0; m < 200; m++) {
+    st3.monthCount = 100 + m;
+    st3.meetCoachMiss = MEET_COACH.pityAfter;
+    const r = st3.enterCompetition([weak], kirokukaiOf(4, 0), weak.fav);
+    if (r.entries.some((e) => e.entrant.win)) continue;
+    lostMeets++;
+    if (r.coachMet) metWithoutWin++;
+  }
+  ok(lostMeets > 0 && metWithoutWin === 0, "優勝しなければ出会わない（天井の状態でも）", `負けた記録会 ${lostMeets}回`);
+  ok(st3.meetCoachMiss === MEET_COACH.pityAfter, "負けた記録会は外れに数えない", `${st3.meetCoachMiss}`);
 }
 
 // ------------------------------------------------------------------ 3. 募集名簿
@@ -137,7 +168,7 @@ head("3. 募集名簿の格はクラブの格で決まる");
 head("4. 名簿があふれても、出会ったコーチは残る");
 {
   const st = new GameState(rand);
-  const a = st.students.ikuseiB[0];
+  const a = champion(st.students.ikuseiB[0]);
   st.monthCount = 50;
   st.meetCoachMiss = MEET_COACH.pityAfter;
   const r = st.enterCompetition([a], kirokukaiOf(4, 0), a.fav);
@@ -165,7 +196,7 @@ head("4. 名簿があふれても、出会ったコーチは残る");
 head("5. セーブして読み込んでも残る");
 {
   const st = new GameState(rand);
-  const a = st.students.ikuseiB[0];
+  const a = champion(st.students.ikuseiB[0]);
   st.monthCount = 60;
   st.meetCoachMiss = MEET_COACH.pityAfter;
   const r = st.enterCompetition([a], kirokukaiOf(4, 0), a.fav);

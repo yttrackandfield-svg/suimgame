@@ -364,4 +364,23 @@ head("10. 値上げ前（v31）のセーブ：払った額と返金（2026-10-02
   ok((entrance.paid ?? 0) === 0, "開始時の入口は払った額 0");
 }
 
+// ------------------------------------------------------------------ 合宿中のセーブ（2026-10-05）
+head("合宿に出かけている途中でセーブ → 読み込み");
+{
+  const st = new GameState(rng(201));
+  const clock = new GameClock();
+  st.gems = 100_000;
+  const go = [...st.students.senshu, ...st.students.pro].slice(0, 2);
+  const r = st.runCamp(go, { id: "univ", stayDays: 21, intensity: "normal" });
+  ok(r.ok && r.weeks === 3, "大学連携合宿は3週", `weeks=${r.weeks}`);
+  st.onDayRoll();
+  const g = load(buildSave(st, clock, 0), 202);
+  ok(g.st.activeCamp?.weeksLeft === 2, "残りの週が保たれる", `${g.st.activeCamp?.weeksLeft}`);
+  ok(go.every((s) => g.st.isAtCamp(g.st.findStudent(s.id)!)), "参加者が保たれる");
+  g.st.onDayRoll();
+  g.st.onDayRoll();
+  const f = g.st.takeFinishedCamp();
+  ok(f != null && f.outcomes.length === go.length, "読み込んだあとも予定どおり帰ってくる", `${f?.outcomes.length}`);
+}
+
 console.log(`\n${fail === 0 ? "全て通過" : `${fail}件 失敗`}  （${pass}/${pass + fail}）`);

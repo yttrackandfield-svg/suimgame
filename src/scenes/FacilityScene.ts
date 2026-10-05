@@ -121,6 +121,9 @@ import { makeChatter, type ChatterActivity } from "../sim/chatter";
 import { ambientAt, crowdLabel, phaseAt, veilAlphas } from "../sim/daytime";
 import { moodColor, moodLabel } from "../sim/satisfaction";
 import { CelebrationLayer } from "../gfx/Celebration";
+import { CampBanner } from "../ui/CampBanner";
+import { CampResultModal } from "../ui/CampResultModal";
+import type { FinishedCamp } from "../sim/state";
 import { clubRankColor, clubRankShort, type ClubRankUpEvent } from "../sim/clubRank";
 import { monthlyAdvice, type Advice } from "../sim/advice";
 import { setJaWrap } from "../ui/textWrap";
@@ -616,6 +619,10 @@ export class FacilityScene extends Phaser.Scene {
   // 練習中の「+1」演出 と お祝いの演出
   private gainPopups!: GainPopupLayer;
   private celebrate!: CelebrationLayer;
+  /** 合宿中の小窓（行き先・残りの週・泳ぐ姿）。 */
+  private campBanner?: CampBanner;
+  /** 帰ってきた合宿の成果の画面。 */
+  private campResult?: CampResultModal;
   private readonly onGain = (s: Student, key: StatKey, amount: number): void => this.showGain(s, key, amount);
 
   // ---- 賑わいの演出（吹き出し・満足度・時間帯）----
@@ -833,6 +840,8 @@ export class FacilityScene extends Phaser.Scene {
     this.panel = undefined;
     this.roster = undefined;
     this.camp = undefined;
+    this.campBanner = undefined;
+    this.campResult = undefined;
     this.coachModal = undefined;
     this.compModal = undefined;
     this.eventModal = undefined;
@@ -900,6 +909,7 @@ export class FacilityScene extends Phaser.Scene {
     // 疲れマークは★ゲージより手前（体力切れは「気づかせたい」情報なので隠れないように）
     this.fatigueMarks = new FatigueMarkLayer(this, this.add.container(0, 0).setDepth(1875));
     this.celebrate = new CelebrationLayer(this);
+    this.campBanner = new CampBanner(this, this.state, () => this.showCampers());
     this.buildHud();
     this.buildFooter();
 
@@ -1317,6 +1327,34 @@ export class FacilityScene extends Phaser.Scene {
       if (cls === "alt") this.camp?.devPickPhase("altitude");
       return;
     }
+    // 入会キャンペーンの帯（?open=enroll）と、そこから開く今回入会した子の一覧（?open=enroll:list）
+    if (what === "enroll") {
+      this.state.gems = Math.max(this.state.gems, 100_000);
+      if (cls === "list") {
+        const r = this.state.runCampaign("freeAdmission");
+        if (r.newIds) this.ensureRoster().showGroup(`${r.label}で入会`, r.newIds);
+      } else {
+        this.onCampaign("freeAdmission");
+      }
+      return;
+    }
+    // 合宿中の小窓（?open=campgo）と、帰ってきたときの成果（?open=campback）。
+    // 月や参加資格は見ずに、育成以上の3人をそのまま連れていく
+    if (what === "campgo" || what === "campback") {
+      const go = CLASS_ORDER.filter((c) => !isSchoolClass(c.id))
+        .flatMap((c) => this.state.students[c.id])
+        .slice(0, 3);
+      const picked = go.length > 0 ? go : [target];
+      this.state.gems = Math.max(this.state.gems, 100_000);
+      this.state.runCamp(picked, { id: cls === "alt" ? "altitude" : "sea", stayDays: 21, intensity: "normal" });
+      if (what === "campback" && this.state.activeCamp) {
+        this.state.activeCamp.weeksLeft = 1;
+        this.state.onDayRoll();
+        const f = this.state.takeFinishedCamp();
+        if (f) this.showCampResult(f);
+      }
+      return;
+    }
     // イベント一覧（?open=events＝イベントタブ／?open=events:campaign＝キャンペーンタブ）
     if (what === "events") {
       this.onEvents();
@@ -1490,6 +1528,7 @@ export class FacilityScene extends Phaser.Scene {
     this.pollSpectators(realDt);
     this.gainPopups.update(realDt);
     this.celebrate.update(realDt);
+    this.campBanner?.update(realDt);
     // 時間帯（画面の色味と館内照明）。時刻が変わったときだけ塗り直す
     this.syncAmbient();
 
@@ -2469,7 +2508,10 @@ export class FacilityScene extends Phaser.Scene {
 
   /** ステージ上に浮いているボタン（＋／－／⤢）の上か。 */
   private isOverStageUi(x: number, y: number): boolean {
-    return !!this.zoomBtnZone && Phaser.Geom.Rectangle.Contains(this.zoomBtnZone, x, y);
+    if (this.zoomBtnZone && Phaser.Geom.Rectangle.Contains(this.zoomBtnZone, x, y)) return true;
+    // 合宿中の小窓（押すと合宿に出ている子の一覧）
+    const camp = this.campBanner?.bounds();
+    return !!camp && Phaser.Geom.Rectangle.Contains(camp, x, y);
   }
 
   /**
@@ -2828,6 +2870,7 @@ export class FacilityScene extends Phaser.Scene {
       !!this.panel?.isOpen() ||
       !!this.roster?.isOpen() ||
       !!this.camp ||
+      !!this.campResult ||
       !!this.coachModal?.isOpen() ||
       !!this.compModal ||
       !!this.confirmModal ||
@@ -5347,6 +5390,9 @@ export class FacilityScene extends Phaser.Scene {
   private onDayRolled(weekToMonth: boolean): void {
     this.state.onDayRoll(); // 日次回復（体力全回復・コンディション少し戻る）
     this.clearVisitors(); // 一般客は日をまたがない
+    // 合宿から帰ってきた（最後の週が明けた）
+    const campBack = this.state.takeFinishedCamp();
+    if (campBack) this.onCampReturned(campBack);
 
     if (weekToMonth) {
       const result = this.state.advanceMonth();
@@ -5722,6 +5768,8 @@ export class FacilityScene extends Phaser.Scene {
       s,
       {
         classAvg: this.state.classAverageOf(s.classId),
+        proSalary: s.classId === "pro" ? this.state.proSalaryOf(s) : undefined,
+        campWeeksLeft: this.state.isAtCamp(s) ? this.state.activeCamp?.weeksLeft : undefined,
         // くらべる相手を選ぶ画面。選手の一覧はクラブ側が持っているので、ここで開く
         pickRival: (onPick) => this.pickRival(s, onPick),
         // 操作はこの先（育成パネル）
@@ -5972,7 +6020,8 @@ export class FacilityScene extends Phaser.Scene {
         value: t.classId,
         label: `${t.label}　${t.filled}/${t.capacity}人`,
         note: t.ok
-          ? `あと${Math.max(0, t.capacity - t.filled)}人入れる`
+          ? `あと${Math.max(0, t.capacity - t.filled)}人入れる` +
+            (t.classId === "pro" ? `　契約金 月◆${this.state.proSalaryIfPro(s).toLocaleString()}（クラブが払う）` : "")
           : undefined,
         disabled: t.ok ? undefined : t.reason,
         color: "#f7dc6f",
@@ -5993,7 +6042,12 @@ export class FacilityScene extends Phaser.Scene {
       this.toast(`昇格できない：${r.reason}`, "#e67e22", 1600);
       return;
     }
-    this.toast(`${s.name} を ${classLabel(to)} へ昇格した`, COLORS.textAccent, 1600);
+    // プロはクラブが契約金を払う（→ PRO_SALARY）。いくらで契約したかをその場で見せる
+    if (to === "pro") {
+      this.toast(`${s.name} とプロ契約！ 契約金 月◆${this.state.proSalaryOf(s).toLocaleString()}`, COLORS.textAccent, 2200);
+    } else {
+      this.toast(`${s.name} を ${classLabel(to)} へ昇格した`, COLORS.textAccent, 1600);
+    }
     // 顔ぶれが変わるので、今のコマを並べ直す（上げた子がその場で新しいクラスに並ぶ）。
     // 並べ直しは 30ms 後なので、パネルを開き直すのはそのあと（選択リングが付くように）。
     this.respawnRunning();
@@ -6263,7 +6317,61 @@ export class FacilityScene extends Phaser.Scene {
         this.openCard(s, undefined, { label: "◀ 合宿", go: () => this.onCamp(snap) });
       },
       restore,
+      (label, weeks, count) => {
+        this.camp?.destroy();
+        this.camp = undefined;
+        this.refreshHud();
+        this.panel?.refresh();
+        this.celebrate.push({
+          icon: "🏕",
+          title: `${label}に出発！`,
+          subtitle: `${count}人・${weeks}週間　帰ってきたら成果が出る`,
+          color: "#e8c07a",
+          durationSec: FX.popSec + 0.4,
+        });
+      },
     );
+  }
+
+  /** 合宿に出ている子の一覧（小窓を押したとき）。 */
+  private showCampers(): void {
+    const camp = this.state.activeCamp;
+    if (!camp) return;
+    const ids = [...camp.ids];
+    this.openPanel("名簿(合宿)", () => this.ensureRoster().showGroup(`合宿中（あと${camp.weeksLeft}週）`, ids));
+  }
+
+  /**
+   * 合宿から帰ってきた。お祝いの帯から成果の画面（能力の前 → 後）を開ける。
+   * 月替わりのレポートと重なることがあるので、勝手には開かず、帯とお知らせから開く。
+   */
+  private onCampReturned(f: FinishedCamp): void {
+    const open = (): void => this.showCampResult(f);
+    this.celebrate.push({
+      icon: "🏕",
+      title: `${f.label}から帰ってきた！`,
+      subtitle: `${f.outcomes.length}人・${f.weeks}週間の成果`,
+      color: "#e8c07a",
+      burst: true,
+      action: { label: "📈 能力の変化を見る", onTap: open },
+    });
+    this.notices.push({
+      icon: "🏕",
+      title: `${f.label}から帰ってきた`,
+      detail: "タップで能力の変化（前 → 後）",
+      color: "#e8c07a",
+      onTap: open,
+    });
+    this.refreshHud();
+    this.panel?.refresh();
+  }
+
+  private showCampResult(f: FinishedCamp): void {
+    this.campResult?.destroy();
+    this.campResult = new CampResultModal(this, f.label, f.outcomes, f.weeks, () => {
+      this.campResult?.destroy();
+      this.campResult = undefined;
+    });
   }
 
   // ---------------------------------------------------------------- イベント一覧
@@ -6306,6 +6414,7 @@ export class FacilityScene extends Phaser.Scene {
       `${r.label} 開催！`,
       `入会 ${joined}人　人気 +${r.popularityGain}　費用 -◆${r.cost}`,
       "#f7dc6f",
+      this.newMembersAction(r.newIds, `${r.label}で入会`),
     );
     this.warnTurnedAway(r.turnedAway);
     if (r.talented) this.time.delayedCall(650, () => this.playTalentEffect());
@@ -6461,6 +6570,8 @@ export class FacilityScene extends Phaser.Scene {
     this.celebrateEvent(
       "短期教室をひらいた！",
       `幼児 +${r.newYouji}　学童 +${r.newGakudo}　人気 +${r.popularityGain}　費用 -◆${r.cost}`,
+      undefined,
+      this.newMembersAction(r.newIds, "短期教室で入会"),
     );
     this.warnTurnedAway(r.turnedAway);
     if (r.talented) this.time.delayedCall(650, () => this.playTalentEffect());
@@ -6762,8 +6873,8 @@ export class FacilityScene extends Phaser.Scene {
         const grade = coachGradeLabel(coachMet.coach.quality);
         this.celebrate.push({
           icon: "🤝",
-          title: `${grade}と出会った！`,
-          subtitle: `${coachMet.coach.name}（${comp.name}）`,
+          title: `優勝が${grade}の目に留まった！`,
+          subtitle: `${coachMet.coach.name}が募集にピックアップ（${comp.name}）`,
           color: coachGradeColor(coachMet.coach.quality),
           burst: coachMet.coach.quality >= 5,
         });
@@ -6965,7 +7076,31 @@ export class FacilityScene extends Phaser.Scene {
   }
 
   /** イベント（体験会・キャンペーン・短期教室）の結果を短い演出で見せる。 */
-  private celebrateEvent(title: string, subtitle: string, color = "#2ecc71"): void {
-    this.celebrate.push({ icon: "🎉", title, subtitle, color, durationSec: FX.popSec + 0.4 });
+  private celebrateEvent(
+    title: string,
+    subtitle: string,
+    color = "#2ecc71",
+    action?: { label: string; onTap: () => void },
+  ): void {
+    this.celebrate.push({ icon: "🎉", title, subtitle, color, durationSec: FX.popSec + 0.4, action });
+  }
+
+  /**
+   * 「入会◯人」の帯に付けるボタン。押すと今回入会した子だけの名簿が開き、
+   * 行から1人ずつカード（能力・才能・プロフィール）を見られる。
+   * 帯を見逃しても後から開けるよう、お知らせにも同じ行き先を残す。
+   */
+  private newMembersAction(ids: readonly number[] | undefined, title: string): { label: string; onTap: () => void } | undefined {
+    if (!ids || ids.length === 0) return undefined;
+    const list = [...ids];
+    const open = (): void => this.openPanel("名簿(入会)", () => this.ensureRoster().showGroup(title, list));
+    this.notices.push({
+      icon: "🆕",
+      title: `${title} ${list.length}人`,
+      detail: "タップで一覧（能力・プロフィール）",
+      color: "#2ecc71",
+      onTap: open,
+    });
+    return { label: `👀 入会した${list.length}人を見る`, onTap: open };
   }
 }

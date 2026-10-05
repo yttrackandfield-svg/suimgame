@@ -687,7 +687,7 @@ head("4b-3. コーチの出動（担当替えで歩き直すか）");
 
 // ------------------------------------------------------------------ 4b-4. 昇格の下限学年とリハビリ
 
-head("4b-4. 昇格の下限学年（プロは高校卒業から）");
+head("4b-4. 昇格の下限学年（プロは高1から）");
 {
   const st = newGame();
   st.gems = 999999;
@@ -700,11 +700,11 @@ head("4b-4. 昇格の下限学年（プロは高校卒業から）");
   ok(st.promoteStudent(kid).ok, "小1でも育成Aに上がれる");
   ok(st.promoteStudent(kid).ok, "小1でも選手に上がれる");
   const tooEarly = st.promoteStudent(kid);
-  ok(!tooEarly.ok, "小1ではプロに上がれない（高校卒業から）", tooEarly.reason ?? "");
-  kid.grade = "高3";
-  ok(!st.promoteStudent(kid).ok, "高3でもまだプロに上がれない");
-  kid.grade = "大1";
-  ok(st.promoteStudent(kid).ok, "高校を出たらプロに上がれる");
+  ok(!tooEarly.ok, "小1ではプロに上がれない（高1から）", tooEarly.reason ?? "");
+  kid.grade = "中3";
+  ok(!st.promoteStudent(kid).ok, "中3ではまだプロに上がれない");
+  kid.grade = "高1";
+  ok(st.promoteStudent(kid).ok, "高校生になったらプロに上がれる");
   ok(kid.classId === "pro", "プロまで上がった");
 }
 
@@ -1608,7 +1608,7 @@ head("13. 月次の収支");
   ok(fin.dorm === DORM.costPerHead, "入寮者ぶんの寮費が掛かる", `◆${fin.dorm}`);
   // スポンサー収入と売店の売上も net に入る（→ GameState.monthlyFinance）
   ok(
-    fin.net === fin.tuition + fin.sponsor + fin.guest + fin.shop - fin.upkeep - fin.salary - fin.dorm,
+    fin.net === fin.tuition + fin.sponsor + fin.guest + fin.shop - fin.upkeep - fin.salary - fin.dorm - fin.proSalary,
     "収支の式が合っている",
     `net=${fin.net}`,
   );

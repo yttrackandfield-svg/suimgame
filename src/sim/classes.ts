@@ -56,7 +56,7 @@ export const CLASS_MIN_GRADE: Record<ClassId, number> = {
   ikuseiB: 0, // 年少から（見込みがあれば幼児のうちに育成へ入れる）
   ikuseiA: 3, // 小1
   senshu: 3, // 小1
-  pro: 15, // 大1＝高校を出た18歳から
+  pro: 12, // 高1から（2026-10-05・ユーザー指示。以前は高校卒業＝大1から）
 };
 
 /** 表示用（昇格できない理由に出す）。 */
@@ -66,7 +66,7 @@ export const CLASS_MIN_GRADE_LABEL: Record<ClassId, string> = {
   ikuseiB: "年少",
   ikuseiA: "小1",
   senshu: "小1",
-  pro: "高校卒業（18歳）",
+  pro: "高1",
 };
 
 /** 育成クラス（練習を事前選択できる）だけの並び。 */

@@ -35,6 +35,8 @@ export interface CampDef {
   minClubTier: number;
   minGems: number;
   observeBonus: number;
+  /** 期間（週）。高地は滞在期間で決まるので使わない（→ campWeeks）。 */
+  weeks: number;
 }
 
 /** 一覧・選択画面の並び（国内 → 海外、それぞれ安い順）。 */
@@ -78,6 +80,7 @@ export const CAMP_DEFS: Record<CampId, CampDef> = Object.fromEntries(
         minClubTier: num(c.minClubTier, 1),
         minGems: num(c.minGems, 0),
         observeBonus: num(c.observeBonus, 0),
+        weeks: Math.max(CAMP.minWeeks, num(c.weeks, CAMP.minWeeks)),
       },
     ];
   }),
@@ -122,6 +125,16 @@ export interface CampPlan {
   stayDays: number;
   /** 高地：練習強度。 */
   intensity: string;
+}
+
+/**
+ * その合宿が何週かかるか。高地は滞在期間（暦日）を週に直し、ほかは行き先ごとに決まっている。
+ * どれも CAMP.minWeeks（2週）を下回らない。
+ */
+export function campWeeks(plan: CampPlan): number {
+  const def = CAMP_DEFS[plan.id];
+  const w = def.isAltitude ? Math.ceil(stayOption(plan.stayDays).days / 7) : def.weeks;
+  return Math.max(CAMP.minWeeks, w);
 }
 
 export function defaultCampPlan(id: CampId): CampPlan {

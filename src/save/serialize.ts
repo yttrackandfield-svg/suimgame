@@ -22,6 +22,7 @@ import {
   isEquipmentKind,
   type EquipmentKind,
 } from "../sim/equipment";
+import { isCampId, type CampId } from "../sim/camp";
 import type { Coach } from "../sim/coach";
 import { isStaffKind, type StaffMember } from "../sim/staff";
 import type { GameState, HoldableId } from "../sim/state";
@@ -229,6 +230,17 @@ export function buildSave(state: GameState, clock: GameClock, playTimeMs: number
       scoutBoost: r2(state.scoutBoost),
       ...(state.priceRevisedNotice ? { priceRevisedNotice: true } : {}),
       meetCoachMiss: Math.max(0, Math.round(state.meetCoachMiss)),
+      // 出かけている合宿（帰ってくるまでの残り週と参加者）
+      activeCamp: state.activeCamp
+        ? {
+            id: state.activeCamp.plan.id,
+            stayDays: state.activeCamp.plan.stayDays,
+            intensity: state.activeCamp.plan.intensity,
+            ids: [...state.activeCamp.ids],
+            weeks: state.activeCamp.weeks,
+            weeksLeft: state.activeCamp.weeksLeft,
+          }
+        : null,
       meetCoachRolled: [...state.meetCoachRolled],
       meetCoachMetMonth: Math.round(state.meetCoachMetMonth),
       // --- v28（コーチの募集名簿。毎月積み上がるので途中経過を保存する）---
@@ -707,6 +719,21 @@ export function applySave(data: SaveData, state: GameState, clock: GameClock): v
   }));
   // 記録会でのコーチとの出会い（v32。無ければ何も起きていない状態から）
   state.meetCoachMiss = Math.max(0, num(g.meetCoachMiss, 0));
+  // 出かけている合宿（無ければ null）。行き先が読めないものは捨てる
+  state.activeCamp = null;
+  const ac = g.activeCamp;
+  if (ac && typeof ac === "object" && isCampId(String(ac.id)) && Array.isArray(ac.ids)) {
+    const ids = ac.ids.map(Number).filter((n) => Number.isFinite(n));
+    const weeks = Math.max(1, Math.round(num(ac.weeks, 2)));
+    if (ids.length > 0) {
+      state.activeCamp = {
+        plan: { id: ac.id as CampId, stayDays: num(ac.stayDays, 21), intensity: String(ac.intensity ?? "normal") },
+        ids,
+        weeks,
+        weeksLeft: Math.min(weeks, Math.max(1, Math.round(num(ac.weeksLeft, 1)))),
+      };
+    }
+  }
   state.meetCoachRolled = (Array.isArray(g.meetCoachRolled) ? g.meetCoachRolled : []).filter(
     (k): k is string => typeof k === "string",
   );

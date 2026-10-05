@@ -56,7 +56,8 @@ export class MonthlyReportModal {
     cb: MonthlyReportCallbacks,
   ) {
     const width = Math.min(480, GAME_WIDTH - 30);
-    const rows = result.finance.byClass.filter((r) => r.count > 0);
+    // プロは月謝を払わない（クラブが契約金を払う側）ので、月謝の行には出さない
+    const rows = result.finance.byClass.filter((r) => r.count > 0 && r.perHead > 0);
     // 断りが出るのは「クラスの定員が埋まったとき」だけ。打つ手は時間割かプール。
     const needShop = result.turnedAway > 0;
 
@@ -130,7 +131,17 @@ export class MonthlyReportModal {
       line("寮の食費・光熱費", `-${result.finance.dorm}`, "#e59866", 12.5, false, 10);
     }
     line("人件費（コーチ・スタッフ）", `-${result.salary}`, "#e59866", 12.5, false, 10);
-    line("支出 合計", `-${result.upkeep + result.salary + result.finance.dorm}`, "#e74c3c", 14, true);
+    // プロの契約金（選手の格とクラブの格で決まる → PRO_SALARY）
+    if (result.finance.proSalary > 0) {
+      line("プロの契約金", `-${result.finance.proSalary}`, "#e59866", 12.5, false, 10);
+    }
+    line(
+      "支出 合計",
+      `-${result.upkeep + result.salary + result.finance.dorm + result.finance.proSalary}`,
+      "#e74c3c",
+      14,
+      true,
+    );
     rule();
 
     // --- 収支

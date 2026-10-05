@@ -150,7 +150,9 @@ export class EventListModal {
     const scAfford = this.state.gems >= SHORTCOURSE.cost;
 
     // 合宿
-    const campHeld = this.state.alreadyHeld("camp");
+    // 今月もう実施した／合宿に出かけている最中（→ GameState.canHoldCamp）
+    const campHold = this.state.canHoldCamp();
+    const campHeld = !campHold.ok;
     const campTargets = CLASS_ORDER.filter((c) => c.kind === "ikusei").flatMap((c) =>
       this.state.students[c.id].filter((s) => this.state.campEligible(s).ok),
     );
@@ -178,12 +180,12 @@ export class EventListModal {
       {
         icon: "🏕",
         name: "合宿",
-        detail: "タイプを選んで実施する。費用は1人あたり。海外はクラブが育ってから狙う大きな投資。",
+        detail: "タイプを選んで出かける。2〜4週のあいだ選手はクラブを空け、帰ってきたときに伸びる。費用は1人あたり。",
         terms: `育成B〜選手は ${campMonths}月／プロ(${CAMP.proMinAge}歳以上)は通年・費用は1人あたり`,
         effect: campTargets.length > 0 ? `参加できる選手 ${campTargets.length}名` : "",
         available: campTargets.length > 0 && !campHeld,
         reason: campHeld
-          ? "今月はもう実施した"
+          ? (campHold.reason ?? "今月はもう実施した")
           : campTargets.length === 0
             ? `${month}月に参加できる選手がいない`
             : "",

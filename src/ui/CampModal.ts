@@ -16,9 +16,8 @@ import {
   type CampId,
   type CampPlan,
 } from "../sim/camp";
-import type { CampOutcome, GameState } from "../sim/state";
+import type { GameState } from "../sim/state";
 import { GAME_HEIGHT, GAME_WIDTH, gemsText } from "../config";
-import { CampResultModal } from "./CampResultModal";
 import { Button, closeOnBackdropTap } from "./Button";
 import { flushInput } from "./inputReady";
 import { setJaWrap } from "./textWrap";
@@ -79,7 +78,6 @@ export class CampModal {
   private readonly PH = Math.min(860, GAME_HEIGHT - 24);
   private readonly ROWS_PER_PAGE = 7;
 
-  private result?: CampResultModal;
   private phase: Phase = "type";
   private plan: CampPlan = { id: "sea", stayDays: ALTITUDE_STAYS[1].days, intensity: ALTITUDE_INTENSITIES[1].id };
 
@@ -105,6 +103,8 @@ export class CampModal {
     private readonly onOpenCard?: (s: Student, snap: CampSnapshot) => void,
     /** 開いたときに戻す選びかけの内容。 */
     restore?: CampSnapshot,
+    /** 合宿に出発したとき（行き先・週数・人数）。渡さなければ閉じるだけ。 */
+    private readonly onDepart?: (label: string, weeks: number, count: number) => void,
   ) {
     this.backdrop = scene.add
       .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55)
@@ -187,8 +187,6 @@ export class CampModal {
   private pageBtnNext!: Button;
 
   destroy(): void {
-    this.result?.destroy();
-    this.result = undefined;
     this.backdrop.destroy();
     this.container.destroy();
   }
@@ -260,7 +258,7 @@ export class CampModal {
     this.phase = "type";
     this.page = 0;
     this.titleText.setText(`合宿　${this.state.dateLabel}`);
-    this.subText.setText("行き先を選ぶ。費用はすべて1人あたり。");
+    this.subText.setText("費用は1人あたり。合宿中は選手がクラブを空ける。");
     this.backBtn.setVisible(false);
     this.goBtn.setVisible(false);
     // 行き先も国内／海外の2ページに分けたので、ここでもページ送りを出す
@@ -282,7 +280,7 @@ export class CampModal {
     this.page = 0;
     this.picked.clear();
     const d = this.def;
-    this.titleText.setText(`合宿　${d.label}`);
+    this.titleText.setText(`合宿　${d.label}${d.isAltitude ? "" : `（${d.weeks}週）`}`);
     // 行き先の説明に、押し分けの案内を添える（行＝参加／ⓘ＝詳しい情報）
     this.subText.setText(`${d.note}
 ${this.pickHint()}`);
@@ -357,6 +355,9 @@ ${this.pickHint()}`);
     this.label(this.listLayer, left, y + 22, d.label, nameColor, 19, true).setAlpha(dim);
     this.label(this.listLayer, this.PW - 32, y + 22, `◆${gemsText(d.costPerHead)} /人`, st.ok ? "#aed6f1" : "#95a6b8", 16, true, 1)
       .setAlpha(dim);
+    // 期間（そのあいだ選手はクラブを空ける）。高地は滞在期間で選ぶ
+    const weeks = d.isAltitude ? "2〜4週" : `${d.weeks}週`;
+    this.label(this.listLayer, this.PW - 32, y + 46, `期間 ${weeks}`, "#e8c07a", 14, true, 1).setAlpha(dim);
 
     const focus = campFocusLabel(d, STAT_LABEL) + (d.isAltitude ? "　※下山のタイミングが要" : "");
     this.label(this.listLayer, left, y + 46, focus, d.isAltitude ? "#e8c07a" : "#9fb3c4", 14).setAlpha(dim);
@@ -662,17 +663,8 @@ ${this.pickHint()}`);
       this.costText.setText(res.reason ?? "実施できない").setColor("#e74c3c");
       return;
     }
-    this.showResults(res.outcomes);
-  }
-
-  /**
-   * 成果は専用の画面（CampResultModal）で出す。
-   * この画面ももとは 780px 幅で 0.67倍に縮んでいたが、2026-09-19 に画面の幅に合わせて組み直した。
-   */
-  private showResults(outcomes: CampOutcome[]): void {
-    this.container.setVisible(false);
-    this.backdrop.setVisible(false);
-    this.result?.destroy();
-    this.result = new CampResultModal(this.scene, this.def.label, outcomes, () => this.onClose());
+    // 伸びは帰ってきたときに付く。成果の画面は施設側が出す（→ FacilityScene.onCampReturned）
+    if (this.onDepart) this.onDepart(this.def.label, res.weeks, participants.length);
+    else this.onClose();
   }
 }

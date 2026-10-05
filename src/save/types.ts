@@ -830,6 +830,18 @@ export interface GameSaveV32 extends GameSaveV31 {
   meetCoachMiss?: number;
   meetCoachRolled?: string[];
   meetCoachMetMonth?: number;
+  /**
+   * 出かけている合宿（2026-10-05・省略可）。合宿は期間があるので、
+   * 途中でセーブしても帰ってくるまでの残り週と参加者を持ち越す（→ GameState.activeCamp）。
+   */
+  activeCamp?: {
+    id: string;
+    stayDays: number;
+    intensity: string;
+    ids: number[];
+    weeks: number;
+    weeksLeft: number;
+  } | null;
 }
 
 export interface SaveDataV32 extends Omit<SaveDataV31, "version" | "game"> {

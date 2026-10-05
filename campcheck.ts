@@ -62,7 +62,7 @@ for (const d of [0, 2, 5, 8, 10, 12, 18, 24, 26]) {
   line(`  下山${String(d).padStart(2)}日後 → ${b ? `${b.label} (×${b.timeFactor})` : "効果なし"}`);
 }
 
-line("\n=== 4. 合宿の実施（高地・9日滞在） ===");
+line("\n=== 4. 合宿の実施（高地・3週滞在） ===");
 const before = { ...st.students.senshu[0].stats };
 const gemsBefore = st.gems;
 // 合宿の費用は 2026-09-23 に上がった（高地は1人◆1,800）。ここは仕組みを見る検査なので、
@@ -70,14 +70,28 @@ const gemsBefore = st.gems;
 st.gems = campDef("altitude").costPerHead * 2 + 500;
 const res = st.runCamp([st.students.senshu[0], st.students.senshu[1]], {
   id: "altitude",
-  stayDays: 12,
+  stayDays: 21,
   intensity: "normal",
 });
 check("実施できた", res.ok, res.reason ?? "");
 check("費用が人数ぶん引かれた", res.cost === campDef("altitude").costPerHead * 2, `cost=${res.cost}`);
-for (const o of res.outcomes) {
+// 【合宿は期間がある】出かけた時点ではまだ伸びず、3週のあいだクラブを空ける
+check("3週の合宿になった", res.weeks === 3, `weeks=${res.weeks}`);
+check("出発しただけでは伸びない", st.students.senshu[0].stats.stamina === before.stamina);
+check("合宿中は練習に来ない", st.isAtCamp(st.students.senshu[0]));
+check("合宿中は次の合宿を組めない", !st.canHoldCamp().ok, st.canHoldCamp().reason ?? "");
+let weeksAway = 0;
+let finished = st.takeFinishedCamp();
+while (!finished && weeksAway < 10) {
+  st.onDayRoll();
+  weeksAway++;
+  finished = st.takeFinishedCamp();
+}
+check("3週で帰ってきた", weeksAway === 3 && finished != null, `weeks=${weeksAway}`);
+check("帰ってきたら合宿中ではない", !st.isAtCamp(st.students.senshu[0]) && st.activeCamp === null);
+for (const o of finished?.outcomes ?? []) {
   line(
-    `  ${o.student.name}: 効果${o.mult.toFixed(2)}倍  持久力+${o.gains.stamina.toFixed(1)}  ` +
+    `  ${o.student.name}: 効果${o.mult.toFixed(2)}倍  持久力 ${o.before.stamina.toFixed(1)}→${o.student.stats.stamina.toFixed(1)}  ` +
       `順応${o.altitudeFailed ? "失敗" : "成功"}  下山→大会 ${o.descentToMeet}日 (${o.bandLabel})` +
       (o.event ? `  [${o.event.kind}] ${o.event.label}` : ""),
   );
