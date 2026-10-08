@@ -127,7 +127,25 @@ export function monthlyAdvice(state: GameState, weekLabel: string): Advice | nul
    * ほかの案内は「損をする」だが、これだけは**育てた子が居なくなる**＝取り返しがつかない。
    * 猶予は1ヶ月しかないので、コーチ未配置より前に出す。
    */
-  const leaving = state.leavingStudents();
+  /**
+   * 卒園して学童に空きがない子は、昇格では残せない（学童の枠を空ける）ので別の書き方にする。
+   * 年齢の退会（猶予1ヶ月）のほうが急ぐので、そちらを先に出す。
+   */
+  const leaving = state.leavingStudents().filter((s) => !state.isWaitingForGakudo(s));
+  const noRoom = state.leavingStudents().filter((s) => state.isWaitingForGakudo(s));
+  if (leaving.length === 0 && noRoom.length > 0) {
+    const s0 = noRoom[0];
+    const when = state.monthsUntilLeave(s0) <= 1 ? "来月" : `${state.monthsUntilLeave(s0)}ヶ月後に`;
+    return {
+      icon: "🎒",
+      text:
+        noRoom.length === 1
+          ? `${head}${s0.name}は学童に空きがない為${when}退会（枠を空ければ残る）`
+          : `${head}${noRoom.length}人が学童に空きがない為退会予定（枠を空ければ残る）`,
+      color: URGENT,
+      go: "roster",
+    };
+  }
   if (leaving.length > 0) {
     const s0 = leaving[0];
     return {

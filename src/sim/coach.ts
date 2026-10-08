@@ -175,11 +175,53 @@ export function coachSalaryDelta(coach: Coach, duties: number): number {
   return coachSalary(coach, duties + 1) - coachSalary(coach, duties);
 }
 
-const COACH_FAMILY = ["岸", "北島", "入江", "瀬戸", "萩野", "松田", "寺川", "古賀", "宮本", "森", "青木", "白井"];
+/**
+ * コーチの苗字（2026-10-09 に12個から増やした）。
+ *
+ * 【同じ苗字ばかりで見分けがつかない】以前は12個しかなく、
+ * 何人か雇うと「岸コーチ」が2人、募集名簿にも同じ名前が並ぶ、ということが普通に起きた。
+ * 日本の苗字を大きく増やし、海外から来たコーチ（カタカナ）も混ぜる。
+ * 海外の名前は長いと画面の枠からはみ出すので、**5文字まで**にしてある。
+ */
+const COACH_FAMILY_JP = [
+  "岸", "北島", "入江", "瀬戸", "萩野", "松田", "寺川", "古賀", "宮本", "森", "青木", "白井",
+  "相沢", "秋山", "浅野", "荒木", "有馬", "飯田", "池上", "石原", "泉", "市川", "今井", "岩崎",
+  "上田", "内田", "大塚", "大西", "岡本", "小野寺", "片山", "金子", "川口", "菊池", "久保", "黒田",
+  "小池", "近藤", "斎藤", "坂口", "桜井", "島田", "清水", "杉山", "関", "高木", "竹内", "谷口",
+  "千葉", "土屋", "徳永", "富田", "永井", "中島", "西村", "野口", "橋本", "長谷川", "早川", "原田",
+  "平野", "広瀬", "福田", "藤原", "星野", "堀", "本田", "前田", "増田", "丸山", "三浦", "水野",
+  "宮崎", "村上", "望月", "森田", "安田", "柳", "矢野", "山口", "横山", "吉村", "若林", "和田",
+];
+const COACH_FAMILY_INTL = [
+  "スミス", "ジョンソン", "ブラウン", "テイラー", "ミラー", "ウォーカー", "ガルシア", "ロペス", "マルティン",
+  "ロッシ", "ビアンキ", "ミュラー", "シュミット", "ベッカー", "デュボワ", "ルロワ", "ペトロフ", "イワノフ",
+  "コワルスキ", "ノヴァク", "ハンセン", "ラーセン", "リンド", "オブライエン", "ケリー", "シルバ", "サントス",
+  "キム", "パク", "イ", "チェン", "ワン", "リー", "グエン", "ベイカー", "ホワイト",
+];
+/** 海外から来たコーチの割合。 */
+const COACH_INTL_RATE = 0.25;
 
-export function makeCoach(rand: () => number, id: number, quality?: number, specialty?: Stroke): Coach {
+/** 苗字を1つ引く（日本の苗字か、海外の苗字か）。 */
+function pickCoachFamily(rand: () => number): string {
+  const list = rand() < COACH_INTL_RATE ? COACH_FAMILY_INTL : COACH_FAMILY_JP;
+  return list[Math.floor(rand() * list.length)];
+}
+
+/**
+ * コーチを1人つくる。
+ * taken に今いるコーチ・募集名簿の名前を渡すと、**それと重ならない名前**にする
+ *（引き直しても重なるときだけ、そのまま使う）。
+ */
+export function makeCoach(
+  rand: () => number,
+  id: number,
+  quality?: number,
+  specialty?: Stroke,
+  taken: ReadonlySet<string> = new Set(),
+): Coach {
   const q = quality ?? 1 + Math.floor(rand() * COACH_MAX_GRADE);
-  const name = `${COACH_FAMILY[Math.floor(rand() * COACH_FAMILY.length)]}コーチ`;
+  let name = `${pickCoachFamily(rand)}コーチ`;
+  for (let i = 0; i < 20 && taken.has(name); i++) name = `${pickCoachFamily(rand)}コーチ`;
   const sp = specialty ?? STROKE_KEYS[Math.floor(rand() * STROKE_KEYS.length)];
   return { id, name, quality: q, assigned: null, duty: "idle", specialty: sp, teaching: startingTeaching(q, rand) };
 }

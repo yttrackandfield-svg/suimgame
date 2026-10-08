@@ -15,6 +15,9 @@ import { setJaWrap } from "./textWrap";
 import type { Button } from "./Button";
 import { attachLongPress } from "./longPress";
 
+/** 行の右端の ⓘ ボタンのぶん、右寄せの文字を内側へずらす幅。 */
+const INFO_W = 40;
+
 /** カードを見に行って戻ってくるときに持ち帰る、選びかけの内容。 */
 export interface EntrySnapshot {
   compId: string;
@@ -452,7 +455,7 @@ export class CompetitionEntryModal {
     setJaWrap(this.countText!, this.pw - 200);
     this.countText?.setText(
       n === 0
-        ? `出場させる選手をえらぶ\n（長押しで選手カード）　1人 ◆${this.state.raceEntryFee(this.comp!) + this.state.raceTravelFee(this.comp!)}`
+        ? `出場させる選手をえらぶ\n（ⓘ で能力・得意種目）　1人 ◆${this.state.raceEntryFee(this.comp!) + this.state.raceTravelFee(this.comp!)}`
         : `${n}人：${names}\n予選の相手 ${rivals}人（上位${RACE.advanceCount}人が決勝へ）　出場費 ◆${cost}`,
     );
     this.countText?.setColor(afford.ok ? "#aed6f1" : "#e74c3c");
@@ -478,7 +481,24 @@ export class CompetitionEntryModal {
     // スクロールの窓の外（ヘッダの裏）に隠れた行では反応させない
     if (this.opts.onOpenCard) {
       attachLongPress(this.scene, rect, () => s, (who) => this.openCard(who), (p) => this.m.isInsideView(p.x, p.y));
+      /**
+       * 【長押しに気づけない／効かないことがある】（2026-10-07）
+       * 長押しは見えない操作なので、能力・得意種目を見る**ボタン**を右端に置く（合宿の一覧の ⓘ と同じ）。
+       * 長押しも残しておく（慣れた人はそのまま使える）。
+       */
+      this.m.button(
+        20 + w - 6 - INFO_W / 2,
+        y + rh / 2 - 4,
+        INFO_W - 4,
+        44,
+        "ⓘ",
+        () => this.openCard(s),
+        { color: 0x2c4a6b, hoverColor: 0x3d6fb0, fontSize: 18 },
+        body,
+      );
     }
+    // 右寄せの文字は ⓘ の手前で止める
+    const right = 20 + w - 12 - (this.opts.onOpenCard ? INFO_W : 0);
 
     // チェックボタン（押すと出場メンバーに入る／外れる）
     const btn = this.m.button(
@@ -515,7 +535,7 @@ export class CompetitionEntryModal {
 
     // 予想タイム（この種目・いまのコンディション込み）
     this.m
-      .text(20 + w - 12, y + 6, `予想 ${formatTime(predictTime(s, this.event) * conditionTimeFactor(level))}`, 13.5, "#aed6f1", true, body)
+      .text(right, y + 6, `予想 ${formatTime(predictTime(s, this.event) * conditionTimeFactor(level))}`, 13.5, "#aed6f1", true, body)
       .setOrigin(1, 0);
 
     // 参加標準記録（全世代共通）まで、あと何秒か（届いていれば「突破」）
@@ -527,7 +547,7 @@ export class CompetitionEntryModal {
       const done = diff <= 0;
       this.m
         .text(
-          20 + w - 12,
+          right,
           y + 26,
           done
             ? `${STANDARD_SHORT[key]} 突破圏`
@@ -541,7 +561,7 @@ export class CompetitionEntryModal {
     }
 
     if (!status.ok && status.reason) {
-      this.m.text(20 + w - 12, y + 44, status.reason, 11, "#e59866", false, body).setOrigin(1, 0);
+      this.m.text(right, y + 44, status.reason, 11, "#e59866", false, body).setOrigin(1, 0);
     }
   }
 

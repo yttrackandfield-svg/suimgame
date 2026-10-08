@@ -1,4 +1,4 @@
-import { canEnterCompetition, canEnterTimeTrial, type ClassId } from "./classes";
+import { canEnterTimeTrial, type ClassId } from "./classes";
 import { lifeStageOf, type LifeStage } from "./growth";
 import { meetsStandard, type StandardKey } from "../data/standardTimes";
 import { GENERAL_RIVAL, RIVAL_LEVEL_FLOOR, ROUTE_RIVAL_ADJUST, SCALE_AWAY_DAYS, SCALE_FINAL_WALL, SCALE_REWARD, SCALE_RIVAL_LEVEL } from "../config/balance";
@@ -302,16 +302,15 @@ export function isTimeTrial(comp: Competition): boolean {
  * 毎月の記録会しかやることが無かった。地区大会だけ間口を広げて、
  * 「勝てば都道府県予選へ」という道を育成のうちから歩けるようにする。
  *
- * 都道府県予選から上は今までどおり選手・プロだけ
- *（勝ち上がると自動で出場するので、そこまでに昇格させる、が目標になる）。
+ * 【勝ち上がった子はクラスを問わず次へ】（2026-10-09）
+ * 以前は都道府県予選から上を選手・プロに限っていたので、育成B・育成Aの子が地区予選で優勝しても
+ * **都道府県予選にエントリーされず、そこで道が切れていた**（小学生は選手クラスに上げにくいので特に）。
+ * 都道府県から上は「前の段で優勝した種目」でしか出られない（requiresPrev）ので、
+ * クラスで重ねて閉ざす必要はない。どの大会も育成B以上なら出られる。
  */
-export function canEnterOf(comp: Competition): (id: ClassId) => boolean {
-  if (isTimeTrial(comp)) return canEnterTimeTrial;
-  if (comp.scale === "area") return canEnterTimeTrial; // 育成B以上
-  // 【日本選手権・アジア・世界はタイムだけが資格】クラスや学年では閉ざさない（2026-09-26）。
-  // 参加標準記録を切った子なら育成Bの小学生でも出られ、勝ち進めばアジア・世界へ行ける
-  if (comp.route === "general") return canEnterTimeTrial;
-  return canEnterCompetition;
+export function canEnterOf(_comp: Competition): (id: ClassId) => boolean {
+  // 日本選手権・アジア・世界も、タイム（参加標準記録）と勝ち上がりだけが資格（2026-09-26）
+  return canEnterTimeTrial;
 }
 
 /** 地区大会か（種目を選べる・育成から出られる入口の大会）。 */

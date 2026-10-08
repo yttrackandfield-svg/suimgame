@@ -961,6 +961,7 @@ export class FacilityScene extends Phaser.Scene {
     this.stockClassForDev();
     this.pinForDev();
     this.markLeavingForDev();
+    this.markGakudoWaitForDev();
     this.warmUpForDev();
     this.tireOutForDev(); // 体力は空回しのあとに減らす（コマの切れ目の回復で戻ってしまうため）
     this.hideHudForDev();
@@ -986,6 +987,18 @@ export class FacilityScene extends Phaser.Scene {
     for (const s of this.state.students.gakudo) {
       if (left <= 0) return;
       s.leaveAtMonth = this.state.monthCount + 1;
+      left--;
+    }
+  }
+
+  /** 【開発の見た目確認】`&gwait=2` で幼児を小1にして、学童の空き待ち（空きがない為の退会予告）にする。 */
+  private markGakudoWaitForDev(): void {
+    if (!import.meta.env.DEV || !this.dev?.gwait) return;
+    let left = this.dev.gwait;
+    for (const s of this.state.students.youji) {
+      if (left <= 0) return;
+      s.grade = "小1";
+      s.leaveAtMonth = this.state.monthCount + 2;
       left--;
     }
   }
@@ -5079,7 +5092,16 @@ export class FacilityScene extends Phaser.Scene {
     if (this.hudCache.get("advice") === a.text + a.color) return;
     this.hudCache.set("advice", a.text + a.color);
     this.adviceIcon.setText(a.icon).setColor(a.color);
-    this.adviceText.setText(a.text).setColor(a.color);
+    /**
+     * 【帯は1行ぶんの高さしかない】長い案内が2行に折り返すと、帯からはみ出して
+     * 下の段（注目選手の札）に重なる。1行に収まるまで字を小さくする。
+     */
+    let size = 13;
+    this.adviceText.setFontSize(size).setText(a.text).setColor(a.color);
+    while (this.adviceText.height > 22 && size > 9) {
+      size -= 0.5;
+      this.adviceText.setFontSize(size);
+    }
   }
 
   /**
@@ -5398,33 +5420,6 @@ export class FacilityScene extends Phaser.Scene {
       const result = this.state.advanceMonth();
       this.refreshHud();
       this.showMonthlyReport(result);
-      /**
-       * 【設備が足りない】混雑で使えなかった人が月にある数を超えたら、
-       * お知らせではなく**イベントの演出**で大きく伝える（→ GUESTS.crowdNoticeAt）。
-       * 人気が出るほど混むので、ここで気づけないと
-       * 「人気度が上がったのに評判が落ちる」の理由が分からないままになる。
-       */
-      if (result.crowd.notify) {
-        // 足りない設備を名前と人数で並べる（増やす先が分からないと直せない）
-        const list = result.crowd.byKind
-          .slice(0, 3)
-          .map((r) => `${equipmentDef(r.kind).label} ${r.count}人`)
-          .join("・");
-        this.celebrate.push({
-          icon: "😠",
-          title: "設備が足りていない！",
-          subtitle: list ? `${list}　が使えず帰った（全体 ${result.crowd.total}人）` : `使えなかった人が今月 ${result.crowd.total}人`,
-          color: "#e74c3c",
-          burst: true,
-        });
-        this.notices.push({
-          icon: "😠",
-          title: `混雑で使えなかった人 ${result.crowd.total}人`,
-          detail: list ? `${list}　増やすか、グレードを上げよう` : "設備を増やそう",
-          color: "#e74c3c",
-          onTap: () => this.onShop(),
-        });
-      }
       if (result.ageEvents.length > 0) {
         // 予告と退会が混ざるので、数だけでなく「何が起きたか」を出す
         const head =
@@ -5455,7 +5450,7 @@ export class FacilityScene extends Phaser.Scene {
       for (const w of result.gakudoWaiting) {
         this.notices.push({
           icon: "🎒",
-          title: `${w.student.name} 学童の枠が空いていない`,
+          title: `${w.student.name} 学童に空きがない為退会予定`,
           detail:
             (w.monthsLeft <= 1 ? "来月で退会" : `あと${w.monthsLeft}ヶ月で退会`) +
             "　学童の子を育成Bへ上げるか、学童のコマを増やして枠を空ければ学童へ移れる",
@@ -6796,7 +6791,7 @@ export class FacilityScene extends Phaser.Scene {
   }
 
   /** 主要大会の出場確認（条件を満たした選手と種目の一覧）。開いている間は時間が止まる。 */
-  private openMajorConfirm(comp: Competition): void {
+  private openMajorConfirm(comp: Competition, restorePicked?: string[]): void {
     this.closeCompModal();
     this.confirmModal?.destroy();
     this.confirmModal = new MeetConfirmModal(this, this.state, comp, {
@@ -6807,6 +6802,14 @@ export class FacilityScene extends Phaser.Scene {
         this.autoSave("出場確認のあと");
       },
       onClose: () => this.closeConfirm(),
+      restorePicked,
+      // 行の ⓘ でその選手のカードへ。閉じると、付けかけの印のまま出場確認へ戻る。
+      // 【closeConfirm は通さない】あちらは次の出場確認を探しに行くので、カードの上に窓が重なる
+      onOpenCard: (s, picked) => {
+        this.confirmModal?.destroy();
+        this.confirmModal = undefined;
+        this.openCard(s, undefined, { label: "◀ 出場確認", go: () => this.openMajorConfirm(comp, picked) });
+      },
     });
   }
 

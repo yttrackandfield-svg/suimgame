@@ -110,7 +110,6 @@ import {
   competitionById,
   canEnterOf,
   confirmEventsFor,
-  isAreaMeet,
   eligibleCompetitions,
   isTimeTrial,
   rivalLevelOf,
@@ -187,7 +186,6 @@ import {
   totalUpkeep,
   type Equipment,
   type EquipmentKind,
-  type RoomKind,
 } from "./equipment";
 import {
   clubEnrollBonus,
@@ -727,21 +725,6 @@ export interface MonthRollResult {
   guestPopularity: number;
   /** 歩いて行けない部屋の数（0でなければ警告を出す）。 */
   stranded: number;
-  /**
-   * 【混雑の不満】設備が足りず使えなかった人（今月ぶん）。
-   *   total  … のべ人数
-   *   worst  … いちばん足りない設備と、その人数
-   *   popularity … そのぶん下がった人気度（マイナスの値）
-   *   notify … 大きく告知すべきか（→ GUESTS.crowdNoticeAt）
-   */
-  crowd: {
-    total: number;
-    worst: { kind: RoomKind; count: number } | null;
-    /** 足りなかった設備の内訳（多い順）。 */
-    byKind: { kind: RoomKind; count: number }[];
-    popularity: number;
-    notify: boolean;
-  };
   /** 今月進んだ研究ポイント。 */
   researchGain: number;
   /**
@@ -1006,20 +989,6 @@ export class GameState {
   /** 今月すでに開催したイベント／キャンペーン（月替わりで空になる）。 */
   heldThisMonth: HoldableId[] = [];
   /**
-   * 今月、混雑で設備を使えなかった人の数（部屋の種類ごと）。
-   * 月が替わると0に戻る（→ noteCrowded）。
-   */
-  crowdMonth: Partial<Record<RoomKind, number>> = {};
-  /**
-   * 今月すでに「回復設備を使えなかった」と数えた選手（`種類:選手id`）。
-   *
-   * 【同じ子を毎コマ数えない】選手は毎日練習のあとに回復設備へ向かうので、
-   * のべ回数で数えると 20人のクラブでも月に数百人「使えなかった」ことになっていた
-   *（しかも全員ぶんを席数のいちばん多い1種類に押しつけていたので、
-   *  マッサージエリアだけが何百人にもなった）。ここで1人1回にそろえる。
-   */
-  private crowdStudentMonth = new Set<string>();
-  /**
    * 選手ごとの「最後に行った合宿の成績」（選手id → 記録）。
    * 次に誰を連れていくかを決める材料なので、**1人1件だけ**持つ（→ CampRecord）。
    */
@@ -1122,12 +1091,12 @@ export class GameState {
     }
     // コーチ：最小構成から（増やすほど毎月の給料が重くなる）。
     for (const h of START.coaches.heads) {
-      const c = makeCoach(this.rand, this.nextCoachId++, h.quality);
+      const c = makeCoach(this.rand, this.nextCoachId++, h.quality, undefined, this.coachNamesInUse());
       c.assigned = h.classId;
       this.coaches.push(c);
     }
     for (const q of START.coaches.bench) {
-      this.coaches.push(makeCoach(this.rand, this.nextCoachId++, q));
+      this.coaches.push(makeCoach(this.rand, this.nextCoachId++, q, undefined, this.coachNamesInUse()));
     }
     // 設備：入口とプールの最小構成を配置する（道は敷かない＝更地はどこでも歩ける）。
     const usedSpots = new Set<number>();
@@ -1970,6 +1939,7 @@ export class GameState {
       guard++;
       const a = pickArrival(rooms, (id) => this.guestCountIn(id), this.rand, (id) => this.guestQueueLen(id));
       if (!a) break;
+      if (a.skip) continue; // 満員だった（混雑の仕組みは廃止 → pickArrival）
       if (a.queued) {
         // 【満員なら並ぶ】料金・利用はまだ。入れたときに admitGuest で数える
         a.queueId = ++this.guestQueueSeq;
@@ -1981,13 +1951,8 @@ export class GameState {
       if (!a.turnedAway) this.guestSlotAdmitted += 1;
       if (a.turnedAway) {
         this.guestMonth.turnedAway += 1;
-        // 満員で帰った客（crowded）と、歩いて行けずに帰った客を分けて数える（→ guestPopularityDelta）
-        if (a.crowded) {
-          this.guestMonth.crowded += 1;
-          // どの設備が足りないかを名指しできるよう、部屋の種類で数える
-          const room = this.equipment.find((e) => e.id === a.roomId);
-          if (room) this.noteCrowded(room.kind);
-        } else this.guestMonth.lockedOut += 1;
+        // 帰るのは歩いて行けなかった客だけ（満員は来なかった扱い → pickArrival の skip）
+        this.guestMonth.lockedOut += 1;
       } else {
         this.guestMonth.served += 1;
         this.guestMonth.income += a.paid;
@@ -2099,8 +2064,6 @@ export class GameState {
         // 待ちくたびれて帰る＝満員で入れなかった客として数える
         this.guestMonth.turnedAway += 1;
         this.guestMonth.crowded += 1;
-        const e = this.equipment.find((x) => x.id === q.roomId);
-        if (e) this.noteCrowded(e.kind);
         this.guestQueueEvents.push({ kind: "gaveUp", queueId: q.id, roomId: q.roomId, waited });
         continue;
       }
@@ -2137,51 +2100,7 @@ export class GameState {
     return this.roomUse[roomId] ?? 0;
   }
 
-  /**
-   * 【混雑で使えなかった人を数える】部屋の種類ごと、今月ぶん。
-   *
-   * 一般客が満員で入れなかった／選手が回復設備を諦めた、をここに集める。
-   * 月末に人気度へ返し（→ GUESTS.crowdPopularityPer）、
-   * どの設備が足りないかを名指しで知らせる（→ worstCrowded）。
-   */
-  noteCrowded(kind: RoomKind): void {
-    this.crowdMonth[kind] = (this.crowdMonth[kind] ?? 0) + 1;
-  }
 
-  /** 選手が回復設備を使えなかった（同じ子・同じ施設は月に1回だけ数える）。 */
-  noteStudentCrowded(s: Student, kind: RoomKind): void {
-    const key = `${kind}:${s.id}`;
-    if (this.crowdStudentMonth.has(key)) return;
-    this.crowdStudentMonth.add(key);
-    this.noteCrowded(kind);
-  }
-
-  /** 今月、混雑で使えなかった人の合計。 */
-  crowdedTotal(): number {
-    return Object.values(this.crowdMonth).reduce((n: number, v) => n + (v ?? 0), 0);
-  }
-
-  /**
-   * 今月、混雑で使えなかった人の**内訳**（多い順）。
-   * 「どの設備が足りないのか」は1つに絞らず、足りていないものを全部出す
-   *（風呂だけ増やしてもサウナが溢れている、ということが起きるため）。
-   */
-  crowdedBreakdown(): { kind: RoomKind; count: number }[] {
-    return Object.entries(this.crowdMonth)
-      .map(([kind, count]) => ({ kind: kind as RoomKind, count: count ?? 0 }))
-      .filter((r) => r.count > 0)
-      .sort((a, b) => b.count - a.count);
-  }
-
-  /** いちばん足りていない設備（使えなかった人がいちばん多い種類）。 */
-  worstCrowded(): { kind: RoomKind; count: number } | null {
-    let best: { kind: RoomKind; count: number } | null = null;
-    for (const [kind, raw] of Object.entries(this.crowdMonth)) {
-      const count = raw ?? 0;
-      if (count > 0 && (!best || count > best.count)) best = { kind: kind as RoomKind, count };
-    }
-    return best;
-  }
 
   /** その部屋を使うコマが、時間割に週何コマ入っているか（プール用）。 */
   lessonsPerWeekIn(roomId: number): number {
@@ -3207,12 +3126,17 @@ export class GameState {
    * クラブが育つほど名簿の顔ぶれが良くなる。レジェンドは来ない（記録会の出会いだけ → MEET_COACH）。
    * 合宿の「名コーチとの出会い」（scoutBoost）があれば、次の1回だけ1つ上の格の並びになる。
    */
+  /** いま居るコーチと募集名簿の名前（新しいコーチの名前が重ならないように → makeCoach）。 */
+  coachNamesInUse(): Set<string> {
+    return new Set([...this.coaches, ...this.recruitPool.map((c) => c.coach)].map((c) => c.name));
+  }
+
   refillRecruitPool(count: number = COACHING.recruit.perMonth): void {
     const limit = COACHING.recruit.expireMonths;
     this.recruitPool = this.recruitPool.filter((c) => this.monthCount - c.since < limit);
     const boost = this.scoutBoost > 0 ? 1 : 0;
     for (const q of recruitQualitiesFor(this.clubTier(), this.monthCount, count, boost)) {
-      const coach = makeCoach(this.rand, this.nextCoachId++, q);
+      const coach = makeCoach(this.rand, this.nextCoachId++, q, undefined, this.coachNamesInUse());
       this.recruitPool.push({ coach, cost: COACHING.recruit.baseCostByQuality[q] ?? 20, since: this.monthCount });
     }
     this.scoutBoost = 0;
@@ -3267,7 +3191,7 @@ export class GameState {
     // 開く前に出会うと空でなくなり、ふつうの応募者が来ないままになるので、先に埋めておく
     if (this.recruitPool.length === 0) this.refillRecruitPool(COACHING.recruit.initialCount);
     const q = rollMeetCoachQuality(tier, this.rand);
-    const coach = makeCoach(this.rand, this.nextCoachId++, q);
+    const coach = makeCoach(this.rand, this.nextCoachId++, q, undefined, this.coachNamesInUse());
     const cand: RecruitCandidate = {
       coach,
       cost: COACHING.recruit.baseCostByQuality[q] ?? 20,
@@ -3640,8 +3564,21 @@ export class GameState {
    */
   gakudoWaiting(): { student: Student; monthsLeft: number }[] {
     return this.students.youji
-      .filter((s) => s.leaveAtMonth != null && this.exceedsAgeLimit("youji", s.grade))
+      .filter((s) => this.isWaitingForGakudo(s))
       .map((s) => ({ student: s, monthsLeft: Math.max(1, (s.leaveAtMonth ?? 0) - this.monthCount) }));
+  }
+
+  /**
+   * 卒園したのに学童が満員で、空きを待っている子か（＝年齢ではなく**クラスに空きがない為**の退会予定）。
+   * 名簿・案内で「来月で退会」と同じ書き方にすると、昇格させれば残せる年齢の退会と見分けがつかない。
+   */
+  isWaitingForGakudo(s: Student): boolean {
+    return s.classId === "youji" && s.leaveAtMonth != null && this.exceedsAgeLimit("youji", s.grade);
+  }
+
+  /** 退会の予告まであと何ヶ月か（予告が無ければ 0）。 */
+  monthsUntilLeave(s: Student): number {
+    return s.leaveAtMonth == null ? 0 : Math.max(1, s.leaveAtMonth - this.monthCount);
   }
 
   /**
@@ -3678,8 +3615,9 @@ export class GameState {
     for (const c of CLASS_ORDER) {
       for (const s of [...this.students[c.id]]) {
         if (s.leaveAtMonth == null || s.leaveAtMonth > this.monthCount) continue;
+        const noRoom = this.isWaitingForGakudo(s);
         this.remove(s, c.id);
-        events.push(`${s.name}（${s.grade}）が退会`);
+        events.push(noRoom ? `${s.name}（${s.grade}）が学童に空きがない為退会` : `${s.name}（${s.grade}）が退会`);
       }
     }
     return events;
@@ -4064,9 +4002,6 @@ export class GameState {
       // 【満足度】良い設備を使えたら機嫌が良くなり、混んでいて諦めたら下がる。
       // 「設備をそろえる → 選手が気持ちよく練習できる」を数字で結びつけるのがここ。
       for (const o of report.outcomes) {
-        // 【選手も混雑を数える】順番が回ってこなくて諦めた／空きが無かった
-        // 数えるのは**並んでいた施設**で、同じ子は月に1回だけ（→ noteStudentCrowded）
-        if (!o.slot && (o.gaveUp || o.full) && o.wantKind) this.noteStudentCrowded(o.student, o.wantKind);
         if (o.slot) this.noteRoomUse(o.slot.roomId);
         if (o.slot) applyMood(o.student, "recovered");
         else if (o.gaveUp) applyMood(o.student, "gaveUpRecovery");
@@ -5318,30 +5253,6 @@ export class GameState {
     const guestMonth = { ...this.guestMonth };
     const guestPopularity = this.addPassivePopularity(guestPopularityDelta(guestMonth));
 
-    /**
-     * 【混雑の不満を人気度に返す】設備が足りず使えなかった人のぶん、評判が落ちる。
-     *
-     * 1人あたりは小さく、月の目減りには蓋をしてある（→ GUESTS.crowdPopularityPer / Max）。
-     * **設備を増やせば止まる**ので、「人気が出た → 混む → 増やす」の輪が回る。
-     * 目減りは passive の逓減を通さない（頑張って上げた人気度がそのまま削られる痛みを出す）。
-     */
-    const crowdTotal = this.crowdedTotal();
-    const crowdWorst = this.worstCrowded();
-    let crowdPopularity = 0;
-    if (crowdTotal > 0) {
-      const drop = Math.min(GUESTS.crowdPopularityMax, crowdTotal * GUESTS.crowdPopularityPer);
-      crowdPopularity = -Math.round(drop * 10) / 10;
-      this.popularity = Math.max(0, this.popularity - drop);
-    }
-    const crowd = {
-      total: crowdTotal,
-      worst: crowdWorst,
-      byKind: this.crowdedBreakdown(),
-      popularity: crowdPopularity,
-      notify: crowdTotal >= GUESTS.crowdNoticeAt,
-    };
-    this.crowdMonth = {}; // 来月ぶんは0から数え直す
-    this.crowdStudentMonth.clear();
 
     // 研究（会議室ごとに1件・4人1組。進めた班のコーチは指導力が伸びる）
     const researchGain = this.researchRate();
@@ -5402,7 +5313,6 @@ export class GameState {
       guests: guestMonth,
       guestPopularity,
       stranded,
-      crowd,
       growers,
     };
   }
@@ -5416,8 +5326,8 @@ export class GameState {
   /**
    * その大会に出せる選手ぜんぶ。
    *
-   * 地区大会（各ルートの入口）だけは**育成B以上**が出られるので、母集団が広い
-   *（→ competitions.canEnterOf）。都道府県予選から上は選手・プロだけ。
+   * どの大会も**育成B以上**が出られる（→ competitions.canEnterOf）。
+   * 都道府県予選から上は、前の段で優勝した子だけが候補に残る。
    */
   athletesFor(comp: Competition): Student[] {
     const can = canEnterOf(comp);
@@ -5472,7 +5382,8 @@ export class GameState {
       const tier = kirokukaiTierOf(c.id);
       if (tier != null) open.add(KIROKUKAI_LADDER[tier].key);
     }
-    return seasonSchedule(this.competitionAthletes(), this.timeTrialAthletes(), this.month, this.year, open);
+    // 勝ち上がりは育成B以上の誰でも歩ける（→ canEnterOf）ので、どちらも育成B以上で数える
+    return seasonSchedule(this.timeTrialAthletes(), this.timeTrialAthletes(), this.month, this.year, open);
   }
 
   /** その大会に出られる生徒（記録会は育成B以上、主要大会は選手・プロ）。 */
@@ -5536,7 +5447,7 @@ export class GameState {
   ): { ok: boolean; reason?: string } {
     // 出られるクラスは大会ごとに違う（記録会と地区大会は育成B以上／ほかは選手・プロ）
     if (!canEnterOf(comp)(s.classId)) {
-      return { ok: false, reason: isTimeTrial(comp) || isAreaMeet(comp) ? "育成B以上から出られる" : "選手・プロのみ" };
+      return { ok: false, reason: "育成B以上から出られる" };
     }
     if (!this.competitionsFor(s).some((c) => c.id === comp.id)) return { ok: false, reason: "出場資格がない" };
     // 勝ち上がった種目でだけ出られる（種目が決まっているときに見る）

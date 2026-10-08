@@ -2225,46 +2225,14 @@ head("飛び込みの入会は「放っておくと増えない」");
   ok(perMonth(100) > perMonth(0), "それでも人気度が高いほうが多い");
 }
 
-head("設備が足りないと不満が出る");
+head("混雑で人気度は下がらない（2026-10-09 に混雑の仕組みを廃止）");
 {
   const st = newGame();
-  ok(st.crowdedTotal() === 0, "はじめは不満0");
-  ok(st.worstCrowded() === null, "足りない設備も無い");
-
-  st.noteCrowded("bath");
-  st.noteCrowded("bath");
-  st.noteCrowded("sauna");
-  ok(st.crowdedTotal() === 3, "使えなかった人を数える", `${st.crowdedTotal()}人`);
-  ok(st.worstCrowded()?.kind === "bath", "いちばん足りない設備を名指しできる", st.worstCrowded()?.kind ?? "");
-  ok(st.worstCrowded()?.count === 2, "その人数も出る", `${st.worstCrowded()?.count}人`);
-
-  // 月末に人気度が下がり、数え直される
   st.popularity = 200;
-  for (let i = 0; i < 50; i++) st.noteCrowded("bath");
   const before = st.popularity;
   const roll = st.advanceMonth();
-  ok(roll.crowd.total >= 50, "月次の結果に人数が載る", `${roll.crowd.total}人`);
-  ok(roll.crowd.worst?.kind === "bath", "どの設備が足りないかも載る");
-  ok(roll.crowd.popularity < 0, "不満のぶん人気度が下がる", `${roll.crowd.popularity}`);
-  ok(st.popularity < before, "実際に人気度が減っている", `${before.toFixed(0)} → ${st.popularity.toFixed(0)}`);
-  ok(
-    before - st.popularity <= GUESTS.crowdPopularityMax + 1e-9,
-    "1ヶ月の目減りには蓋がある",
-    `-${(before - st.popularity).toFixed(1)} / 上限${GUESTS.crowdPopularityMax}`,
-  );
-  ok(roll.crowd.notify, "多ければ大きく告知する");
-  ok(st.crowdedTotal() === 0, "翌月は0から数え直す");
-
-  // 【選手は1人1回】毎日の練習後に回復設備へ向かうので、のべで数えると
-  // 月に数百人「使えなかった」ことになっていた（マッサージエリアに全部押しつけられていた）
-  const kid = createStudent(rng(4242), 9100, "senshu");
-  for (let i = 0; i < 30; i++) st.noteStudentCrowded(kid, "recovery");
-  ok(st.crowdedTotal() === 1, "同じ選手は月に1回だけ数える", `${st.crowdedTotal()}人`);
-  st.noteStudentCrowded(kid, "bath");
-  ok(st.crowdedTotal() === 2, "別の施設ならそちらにも数える", `${st.crowdedTotal()}人`);
-  st.advanceMonth();
-  st.noteStudentCrowded(kid, "recovery");
-  ok(st.crowdedTotal() === 1, "翌月はまた数える", `${st.crowdedTotal()}人`);
+  ok(!("crowd" in roll), "月次の結果に「使えなかった人」は載らない");
+  ok(st.popularity >= before - 1e-9 || roll.guestPopularity < 0, "混雑のぶんで人気度は減らない", `${before.toFixed(0)} → ${st.popularity.toFixed(0)}`);
 }
 
 head("大きい部屋ほど一般客が来る");
@@ -2291,7 +2259,7 @@ head("大きい部屋ほど一般客が来る");
   }
 }
 
-head("満員なら並び、待ちくたびれたら帰る");
+head("満員の部屋には来ない（空いている同じ設備へ流れる）");
 {
   // --- 待ちくたびれる確率：待つほど帰りやすい
   const early = queueGiveUpChance(2, 1);
@@ -2334,34 +2302,31 @@ head("満員なら並び、待ちくたびれたら帰る");
   used[1] = 4;
   used[3] = 0;
   const r1 = pickArrival([a], occ, () => 0)!;
-  ok(r1.queued === true && !r1.turnedAway, "満員なら帰らずに並ぶ");
+  ok(r1.skip === true && !r1.queued && !r1.turnedAway && !r1.crowded, "満員なら並ばず・怒らず、来なかったことになる");
   const rFar = pickArrival([a, far], occ, () => 0)!;
-  ok(rFar.roomId === 1, "遠くの同じ設備までは流れない（その場で並ぶ）");
-  const rLong = pickArrival([a], occ, () => 0, () => queueLimitOf(a))!;
-  ok(rLong.turnedAway && rLong.crowded, "行列が長すぎれば並ばずに帰る");
-  const rCut = pickArrival([{ ...a }], (id) => (id === 1 ? 1 : 0), () => 0, () => 1)!;
-  ok(rCut.queued === true, "空きがあっても行列があれば割り込まない");
+  ok(rFar.roomId === 1 && rFar.skip === true, "遠くの同じ設備までは流れない");
 
-  // --- 本物の館で：人気のわりに部屋が小さいと、並ぶ客・入れる客・帰る客が出る
+  // --- 本物の館で：人気のわりに部屋が小さくても、行列・不満・帰る客は出ない
   const st = newGame(612);
   st.gems = 99_999_999;
   while (st.expandLand().ok) st.gems = 99_999_999;
   st.buyEquipment("gym");
   st.popularity = 20_000; // 部屋1つに対して客が多すぎる状態を作る
   let queued = 0;
-  let admitted = 0;
-  let gaveUp = 0;
+  let crowded = 0;
+  let served = 0;
   for (let m = GUESTS.openMinute; m < GUESTS.closeMinute; m += 1) {
-    for (const x of st.tickGuests(m, 1)) if (x.queued) queued++;
-    for (const e of st.takeGuestQueueEvents()) {
-      if (e.kind === "admitted") admitted++;
-      else if (e.waited != null) gaveUp++;
+    for (const x of st.tickGuests(m, 1)) {
+      if (x.queued) queued++;
+      if (x.crowded) crowded++;
+      if (!x.turnedAway) served++;
     }
+    st.takeGuestQueueEvents();
   }
-  ok(queued > 0, "満員の部屋には行列ができる", `${queued}人`);
-  ok(admitted > 0, "席が空けば行列から入れる", `${admitted}人`);
-  ok(gaveUp > 0, "待ちくたびれて帰る客も出る", `${gaveUp}人`);
-  ok((st.crowdMonth.gym ?? 0) > 0, "帰った客は「筋トレルームが足りない」不満に数える", `${st.crowdMonth.gym ?? 0}人`);
+  ok(queued === 0, "行列はできない", `${queued}人`);
+  ok(crowded === 0, "混雑で不満を持つ客はいない", `${crowded}人`);
+  ok(served > 0, "定員までは客が入る", `${served}人`);
+  ok(st.guestMonth.crowded === 0, "混雑の人数は数えない", `${st.guestMonth.crowded}人`);
 }
 
 head("医科学センター・低酸素トレーニングルームは時間割でクラスを入れて使う");

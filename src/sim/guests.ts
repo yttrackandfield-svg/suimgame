@@ -217,6 +217,11 @@ export interface GuestArrival {
   queued?: boolean;
   /** 並んだ客の番号（画面の客と、あとで届く「入れた／帰った」を結びつける）。 */
   queueId?: number;
+  /**
+   * 満員だったので、来なかったことにする客（2026-10-09 に混雑の仕組みを廃止）。
+   * 並ばない・怒らない・数えない。画面にも出さない。
+   */
+  skip?: boolean;
 }
 
 /**
@@ -308,18 +313,17 @@ export function pickArrival(
   if (!target.reachable) {
     return { ...base, paid: 0, turnedAway: true, crowded: false };
   }
-  const used = occupancy(target.room.id);
-  const crowded = used >= target.capacity * GUESTS.crowdedRatio;
-  // 満員か、もう誰かが並んでいる（順番を抜かさない）
-  if (used >= target.capacity || queueLen(target.room.id) > 0) {
-    // 行列が長すぎれば、見ただけで諦めて帰る（料金は取れない）
-    if (queueLen(target.room.id) >= queueLimitOf(target)) {
-      return { ...base, paid: 0, turnedAway: true, crowded: true };
-    }
-    // 【満員なら並ぶ】扉の前で順番を待つ。料金は入れたときに払う
-    return { ...base, paid: 0, turnedAway: false, crowded: true, queued: true };
+  /**
+   * 【混雑の仕組みは廃止】（2026-10-09 ユーザー指示）
+   * 以前は満員だと行列に並び、待ちくたびれたら怒って帰り、
+   * 「混雑で使えなかった人」として数えて人気度を下げていた。
+   * いまは**満員なら最初から来なかった**ことにする（不満も人気度の低下も無い）。
+   * 定員は来場の上限としてだけ働く（設備を増やせばそのぶん客と収入が増える）。
+   */
+  if (occupancy(target.room.id) >= target.capacity) {
+    return { ...base, paid: 0, turnedAway: false, crowded: false, skip: true };
   }
-  return { ...base, paid: target.fee, turnedAway: false, crowded };
+  return { ...base, paid: target.fee, turnedAway: false, crowded: false };
 }
 
 /** その部屋の前に並べる人数（これ以上の行列を見た客は並ばずに帰る）。 */

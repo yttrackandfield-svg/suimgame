@@ -5,7 +5,6 @@ import { classLabel } from "../sim/classes";
 import { guestAverageMood } from "../sim/guests";
 import { moodColor, moodLabel } from "../sim/satisfaction";
 import type { MonthRollResult } from "../sim/state";
-import { equipmentDef } from "../sim/equipment";
 
 /**
  * 月次の収支レポート（月替わりに出る）。
@@ -182,24 +181,6 @@ export class MonthlyReportModal {
     }
     if (result.stranded > 0) {
       line("⚠ 歩いて行けない部屋", `${result.stranded}件`, "#e74c3c", 13, true);
-    }
-    /**
-     * 【混雑の不満】設備が足りず使えなかった人。
-     * 数だけでなく**どの設備が足りないか**を名指しする（増やす先が分からないと直せない）。
-     */
-    if (result.crowd.total > 0) {
-      line("😠 設備が足りず使えなかった人", `${result.crowd.total}人`, "#e74c3c", 13, result.crowd.notify);
-      // 【どの設備かを全部書く】1つだけ名指しすると、
-      // それを増やしたのに別の設備が溢れている、ということが起きる
-      for (const r of result.crowd.byKind.slice(0, 4)) {
-        line(`　└ ${equipmentDef(r.kind).label}`, `${r.count}人`, "#e59866", 12.5);
-      }
-      if (result.crowd.byKind.length > 4) {
-        line("　└ ほか", `${result.crowd.byKind.length - 4}種類`, "#e59866", 12.5);
-      }
-      if (result.crowd.popularity !== 0) {
-        line("　不満で人気度", `${result.crowd.popularity}`, "#e74c3c", 13);
-      }
     }
 
     // --- 月例記録会（格の根拠になるタイム計測）

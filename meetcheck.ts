@@ -380,7 +380,9 @@ head("地区大会は育成から出られる");
   const area = CALENDAR.find((c) => c.id === "el_area")!;
   const ken = CALENDAR.find((c) => c.id === "el_ken")!;
   ok(canEnterOf(area)(kid.classId), "育成Bは地区大会に出られる");
-  ok(!canEnterOf(ken)(kid.classId), "都道府県予選からは出られない（選手・プロだけ）");
+  // 2026-10-09：勝ち上がった子はクラスを問わず次へ（地区で勝った育成の子が都道府県に出られなかった不具合）
+  ok(canEnterOf(ken)(kid.classId), "育成Bでも都道府県予選に出られる（出られる種目は勝ち上がりで決まる）");
+  ok(!canEnterOf(ken)("gakudo"), "都道府県予選もスクール生は出られない");
   ok(canEnterOf(area)("senshu") && canEnterOf(area)("pro"), "選手・プロも出られる");
   ok(!canEnterOf(area)("gakudo") && !canEnterOf(area)("youji"), "スクール生は出られない");
 

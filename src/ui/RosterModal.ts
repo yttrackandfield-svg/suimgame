@@ -785,20 +785,37 @@ export class RosterModal {
      * 並びは大事な順（クラス → 休養 → 個人）で、入らなければ後ろから落とす。
      * 実測（setText したあとの width）で判断するので、文字が変わっても崩れない。
      */
-    const base = `${s.grade}・${GENDER_LABEL[s.gender]}`;
+    const leaving = s.leaveAtMonth != null;
+    /**
+     * 【卒園して学童が満員の子】（2026-10-07）
+     * 年齢で出ていく子と同じ「来月で退会」だと、昇格させれば残せるように読めてしまう。
+     * 理由（クラスに空きがない）が分かる書き方にする。性別は落として、そのぶんを理由に回す。
+     */
+    const noRoom = leaving && this.state.isWaitingForGakudo(s);
+    const base = leaving ? s.grade : `${s.grade}・${GENDER_LABEL[s.gender]}`;
     const badges: string[] = [];
     // 【退会の予告は先頭】入らなければ後ろから落とす仕組みなので、
     // いちばん取り返しのつかない知らせを先に置いて、最後まで残るようにする
-    const leaving = s.leaveAtMonth != null;
-    if (leaving) badges.push("⚠来月で退会");
+    if (leaving) badges.push(noRoom ? "⚠空きなし退会" : "⚠来月で退会");
     if (this.classId === "all") badges.push(classLabel(s.classId));
     if (restLeft > 0) badges.push(`🛌${restLeft}週`);
     if (s.planMode === "self") badges.push("個人");
     const withBadges = (): string => base + (badges.length > 0 ? `　${badges.join(" ")}` : "");
     row.sub.setText(withBadges());
-    while (badges.length > 0 && row.sub.width > this.SUB_W) {
+    while (badges.length > 1 && row.sub.width > this.SUB_W) {
       badges.pop();
       row.sub.setText(withBadges());
+    }
+    // 最後の1つ（退会の印）でもはみ出すなら、短い書き方に替える → それでもだめなら落とす
+    if (badges.length > 0 && row.sub.width > this.SUB_W) {
+      if (leaving) {
+        badges[0] = "⚠退会";
+        row.sub.setText(withBadges());
+      }
+      if (row.sub.width > this.SUB_W) {
+        badges.pop();
+        row.sub.setText(withBadges());
+      }
     }
     row.sub.setColor(leaving ? "#e67e22" : rest ? "#f1c40f" : "#9fb3c4");
 

@@ -36,6 +36,7 @@
  *   &scroll=400             … 開いた画面を400pxスクロールしておく（下のほうの確認）
  *   &pin=3                  … 注目選手（★）を3人付けておく（HUD の5段目の確認）
  *   &leave=2                … 2人に「来月で退会」の予告を付けておく（名簿の印と案内の確認）
+ *   &gwait=2                … 幼児2人を小1にして「学童に空きがない為退会」の予告を付けておく
  *   &rest=1                 … 開くクラス全員を休養させておく（休養中の見た目の確認）
  *
  * この指定で始めたときはセーブしない（遊んでいるデータを上書きしないため）。
@@ -85,6 +86,8 @@ export interface DevView {
    * 本来は年度の変わり目にしか付かないので、待たずに撮れるようにする。
    */
   leave: number;
+  /** 幼児をその人数ぶん小1にして、学童の空き待ち（空きがない為の退会予告）にしておく。 */
+  gwait: number;
   /**
    * 開く選手の能力をこの値にしておく（0-100・負の値＝指定なし）。
    * レーダーチャートは能力が育たないと大きくならないので、
@@ -134,6 +137,7 @@ export function devView(): DevView | null {
     rest: q.get("rest") === "1",
     pin: Math.max(0, Math.min(3, Number(q.get("pin") ?? 0) || 0)),
     leave: Math.max(0, Math.min(9, Number(q.get("leave") ?? 0) || 0)),
+    gwait: Math.max(0, Math.min(9, Number(q.get("gwait") ?? 0) || 0)),
     stats: q.has("stats") ? Math.max(0, Math.min(100, Number(q.get("stats")) || 0)) : -1,
     tab: Math.max(0, Math.min(3, Number(q.get("tab") ?? 0) || 0)),
     cmp: q.get("cmp"),

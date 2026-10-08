@@ -117,7 +117,7 @@ export function crowdFactorAt(minute: number): number {
 /** 賑わいの言い回し（HUD の案内に使う）。 */
 export function crowdLabel(minute: number): string {
   const f = crowdFactorAt(minute);
-  if (f >= DAYTIME.busyFactor) return "混雑";
+  if (f >= DAYTIME.busyFactor) return "賑わう時間";
   if (f <= DAYTIME.quietFactor) return "閑散";
   return "";
 }

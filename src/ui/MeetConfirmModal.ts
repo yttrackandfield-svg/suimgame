@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { formatTime, GENDER_LABEL, predictTime, STROKE_LABEL } from "../sim/student";
+import { formatTime, GENDER_LABEL, predictTime, STROKE_LABEL, type Student } from "../sim/student";
 import { isAreaMeet, SCALE_LABEL, type Competition } from "../sim/competitions";
 import { conditionLevel, conditionTimeFactor, CONDITION_COLOR, CONDITION_ICON, CONDITION_LABEL } from "../sim/condition";
 import { classLabel } from "../sim/classes";
@@ -14,10 +14,19 @@ export interface MeetConfirmCallbacks {
   onDone: (message: string) => void;
   /** × で閉じた（あとで決める。大会画面から開き直せる）。 */
   onClose: () => void;
+  /**
+   * 行の ⓘ を押したとき（その選手のカードを開く）。
+   * picked は選びかけの印。開き直すときに restorePicked へ渡し返せば、印が消えない。
+   */
+  onOpenCard?: (s: Student, picked: string[]) => void;
+  /** 開いたときに戻す選びかけの印（カードを見て戻ってきたとき）。 */
+  restorePicked?: string[];
 }
 
 /** 1人ぶんの行の高さ。 */
 const ROW_H = 58;
+/** 行の右端の ⓘ ボタンのぶん、右寄せの文字を内側へずらす幅。 */
+const INFO_W = 40;
 /** 下段（出場費とボタン）の高さ。 */
 const FOOTER_H = 96;
 
@@ -79,7 +88,11 @@ export class MeetConfirmModal {
           predictTime(a.student, a.event) - predictTime(b.student, b.event),
       );
     const current = state.majorEntriesOf(comp);
-    if (current.length > 0) {
+    if (cb.restorePicked) {
+      // カードを見て戻ってきた：選びかけの印をそのまま戻す（もう居ない行の印は捨てる）
+      const keys = new Set(this.rows.map((r) => this.key(r)));
+      for (const k of cb.restorePicked) if (keys.has(k)) this.picked.add(k);
+    } else if (current.length > 0) {
       // 開き直したときは、いまのエントリーをそのまま出す
       for (const c of current) this.picked.add(this.key(c));
     } else {
@@ -232,12 +245,29 @@ export class MeetConfirmModal {
     );
     if (full) btn.setEnabled(false);
 
-    this.m.text(84, y + 4, s.name, 15, on ? "#ffffff" : "#ecf0f1", true, body);
+    /**
+     * 【能力・得意種目を見るボタン】（2026-10-07）
+     * この画面には選手カードへの入口が無く、誰を出すか決める材料が予想タイムだけだった。
+     * 行のタップはチェックと紛らわしいので、合宿の一覧と同じく**右端の ⓘ** に分ける。
+     */
+    const right = 20 + w - 12 - (this.cb.onOpenCard ? INFO_W : 0);
+    if (this.cb.onOpenCard) {
+      this.m.button(
+        20 + w - 6 - INFO_W / 2,
+        y + ROW_H / 2 - 4,
+        INFO_W - 4,
+        38,
+        "ⓘ",
+        () => this.cb.onOpenCard?.(s, [...this.picked]),
+        { color: 0x2c4a6b, hoverColor: 0x3d6fb0, fontSize: 18 },
+        body,
+      );
+    }
+
+    // --- 右側（予想タイム・注意書き）を先に置いて、左の文字はその手前までにする
     const level = conditionLevel(s.condition);
-    this.m.text(84, y + 27, `${classLabel(s.classId)}・${s.grade}`, 11.5, "#9fb3c4", false, body);
-    this.m.text(196, y + 27, `${CONDITION_ICON[level]} ${CONDITION_LABEL[level]}`, 11.5, CONDITION_COLOR[level], true, body);
     const pred = predictTime(s, r.event) * conditionTimeFactor(level);
-    this.m.text(20 + w - 12, y + 6, `予想 ${formatTime(pred)}`, 13.5, "#aed6f1", true, body).setOrigin(1, 0);
+    const predText = this.m.text(right, y + 6, `予想 ${formatTime(pred)}`, 13.5, "#aed6f1", true, body).setOrigin(1, 0);
     const note = raceFull
       ? "このレースは満員"
       : meetFull
@@ -245,7 +275,35 @@ export class MeetConfirmModal {
         : s.injuryDays > 0
           ? "ケガ（治らなければ当日欠場）"
           : "";
-    if (note) this.m.text(20 + w - 12, y + 29, note, 11, "#e59866", false, body).setOrigin(1, 0);
+    const noteText = note ? this.m.text(right, y + 29, note, 11, "#e59866", false, body).setOrigin(1, 0) : null;
+
+    // --- 上段：名前 → 得意種目（この行の種目と合っていれば色を変える）
+    const name = this.m.text(84, y + 4, s.name, 15, on ? "#ffffff" : "#ecf0f1", true, body);
+    const sameStroke = s.fav.stroke === r.event.stroke;
+    const exact = sameStroke && s.fav.distance === r.event.distance;
+    const fav = this.m.text(
+      name.x + name.width + 12,
+      y + 7,
+      `得意 ${STROKE_LABEL[s.fav.stroke]}${s.fav.distance}m${exact ? " ◎" : sameStroke ? " ○" : ""}`,
+      12,
+      exact ? "#f7dc6f" : sameStroke ? "#7fd8c0" : "#8fa3b5",
+      exact || sameStroke,
+      body,
+    );
+    if (fav.x + fav.width > right - predText.width - 10) fav.setVisible(false);
+
+    // --- 下段：クラス・学年 → 調子（重なるなら調子を後ろへ送る）
+    const sub = this.m.text(84, y + 27, `${classLabel(s.classId)}・${s.grade}`, 11.5, "#9fb3c4", false, body);
+    const cond = this.m.text(
+      Math.max(196, sub.x + sub.width + 10),
+      y + 27,
+      `${CONDITION_ICON[level]} ${CONDITION_LABEL[level]}`,
+      11.5,
+      CONDITION_COLOR[level],
+      true,
+      body,
+    );
+    if (noteText && cond.x + cond.width > right - noteText.width - 10) cond.setVisible(false);
   }
 
   private buildFooter(): void {
