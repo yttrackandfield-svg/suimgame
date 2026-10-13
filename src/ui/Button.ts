@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { flushInput } from "./inputReady";
-import { logicalDistance } from "../gfx/renderScale";
+import { logicalDistance, logicalPoint } from "../gfx/renderScale";
 
 export interface ButtonOptions {
   color?: number;
@@ -9,6 +9,12 @@ export interface ButtonOptions {
   fontSize?: number;
   /** 当たり判定を上下左右へ広げる量（px）。指で押しやすくする。 */
   hitPadding?: number;
+  /**
+   * 押し始めてよいか（p は論理座標 540×960）。false なら押しても何も起きない。
+   * スクロールする一覧の中のボタンに使う。マスクは見た目を切るだけなので、
+   * 窓の外（ヘッダやフッタの裏）へ流れた行のボタンが、そこを触ると反応してしまう。
+   */
+  canPress?: (p: { x: number; y: number }) => boolean;
 }
 
 /** 当たり判定の既定の余白。隣のボタンと重ならない範囲で少しだけ広げる。 */
@@ -126,8 +132,9 @@ export class Button extends Phaser.GameObjects.Container {
       this.setScale(1);
       if (!p.wasTouch) scene.input.setDefaultCursor("default");
     });
-    this.on("pointerdown", () => {
+    this.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (!this.enabled) return;
+      if (opts.canPress && !opts.canPress(logicalPoint(p))) return;
       this.pressed = true;
       this.setScale(0.97); // 押した手応え（指を離す前に返す）
     });

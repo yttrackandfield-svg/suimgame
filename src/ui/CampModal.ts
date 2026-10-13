@@ -180,7 +180,16 @@ export class CampModal {
     this.container.setScale(scale);
     this.container.setPosition((GAME_WIDTH - this.PW * scale) / 2, (GAME_HEIGHT - this.PH * scale) / 2);
 
-    this.toTypePhase();
+    // カードを見て戻ってきたときは、選手選びの画面に**選んだ印を残したまま**戻す。
+    // 以前はここで必ず行き先選びへ戻していたので、見に行くたびに選び直しになっていた
+    if (restore?.phase === "pick") {
+      const page = restore.page;
+      this.toPickPhase(this.plan.id, true);
+      this.page = page;
+      this.renderPick();
+    } else {
+      this.toTypePhase();
+    }
   }
 
   private pageBtnPrev!: Button;
@@ -274,11 +283,17 @@ export class CampModal {
     this.toPickPhase(id);
   }
 
-  private toPickPhase(id: CampId): void {
+  /** keepPicked＝true は、カードから戻ってきたとき（選んだ顔ぶれと高地の設定をそのまま使う）。 */
+  /** 【見た目確認】行き先一覧の海外のページを開く（?open=camp:overseas）。 */
+  devTypePage(page: number): void {
+    this.turnPage(page);
+  }
+
+  private toPickPhase(id: CampId, keepPicked = false): void {
     this.plan = { ...this.plan, id };
     this.phase = "pick";
     this.page = 0;
-    this.picked.clear();
+    if (!keepPicked) this.picked.clear();
     const d = this.def;
     this.titleText.setText(`合宿　${d.label}${d.isAltitude ? "" : `（${d.weeks}週）`}`);
     // 行き先の説明に、押し分けの案内を添える（行＝参加／ⓘ＝詳しい情報）

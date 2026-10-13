@@ -176,6 +176,12 @@ export class CelebrationLayer {
       })
       .setOrigin(0.5, opts.subtitle ? 0 : 0.5);
     root.add(title);
+    /**
+     * 【帯からはみ出さないよう縮める】（2026-10-13）
+     * wordWrap は日本語では折り返らない（空白が無いため）。「オーストラリア冬季合宿から帰ってきた！」
+     * のような長い見出しは、帯の枠を越えて左右へはみ出していた。1行のまま、入るまで字を小さくする。
+     */
+    fitTextWidth(title, GAME_WIDTH - 52 - faceW, 24, 16);
 
     if (opts.subtitle) {
       const sub = this.scene.add
@@ -188,6 +194,7 @@ export class CelebrationLayer {
         })
         .setOrigin(0.5, 1);
       root.add(sub);
+      fitTextWidth(sub, GAME_WIDTH - 52 - faceW, 17, 12);
     }
 
     if (opts.action) {
@@ -248,5 +255,14 @@ export class CelebrationLayer {
   private finish(a: Active): void {
     a.root.destroy();
     a.emitter?.destroy();
+  }
+}
+
+/** 1行の文字を、幅に入るまで小さくする（from → min px）。 */
+function fitTextWidth(t: Phaser.GameObjects.Text, maxW: number, from: number, min: number): void {
+  let size = from;
+  while (t.width > maxW && size > min) {
+    size -= 1;
+    t.setFontSize(size);
   }
 }

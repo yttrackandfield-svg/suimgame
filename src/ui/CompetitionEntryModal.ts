@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { formatTime, GENDER_LABEL, predictTime, STROKE_LABEL, type RaceEvent, type Student } from "../sim/student";
+import { formatTime, GENDER_LABEL, predictTime, STROKE_LABEL, type Gender, type RaceEvent, type Student } from "../sim/student";
 import { effectiveStandard, STANDARD_SHORT } from "../data/standardTimes";
 import { clearedEventsOf } from "../sim/competitions";
 import { competitionById, isTimeTrial, SCALE_LABEL, type Competition } from "../sim/competitions";
@@ -33,7 +33,8 @@ export interface EntryOptions {
   /** 出場確認が届いている主要大会を押したとき（出場確認の一覧を開く）。 */
   onOpenConfirm?: (comp: Competition) => void;
   /** メドレーリレー（12月の世界選手権）を泳ぐ。 */
-  onRelay?: () => void;
+  /** その性別のリレーを泳ぎに行く。 */
+  onRelay?: (gender: Gender) => void;
 }
 
 /**
@@ -201,30 +202,33 @@ export class CompetitionEntryModal {
     }
 
     /**
-     * ---- メドレーリレー（12月の世界選手権）----
+     * ---- メドレーリレー（11月のアジア選手権 → 12月の世界選手権）----
      *
      * 日本選手権（10月）の100mで優勝した選手は日本代表になる。
      * 個人種目とは別枠なので、**ここから直接泳ぎに行ける**ようにしてある
      *（出場確認の仕組みに乗せると、個人種目に出さない年は泳げなくなる）。
+     * 男女は別のリレーなので、両方に代表がいれば2本並ぶ。
      */
-    const relay = this.opts.onRelay ? this.state.relayEntry() : null;
-    if (relay) {
+    const relays = this.opts.onRelay ? this.state.relayEntries() : [];
+    for (const relay of relays) {
       const who = relay.members.map((s) => s.name).join("・");
+      const sex = relay.gender === "f" ? "女子" : "男子";
       this.m.button(
         (this.pw - this.m.scrollGutter) / 2,
         y + 22,
         this.pw - 56 - this.m.scrollGutter,
         44,
-        `🇯🇵 400mメドレーリレー（日本代表）を泳ぐ`,
-        () => this.opts.onRelay?.(),
+        `🇯🇵 ${relay.comp.name} ${sex}メドレーリレーを泳ぐ`,
+        () => this.opts.onRelay?.(relay.gender),
         { color: 0x8e2f4a, hoverColor: 0xb8435f, fontSize: 15 },
         this.m.body,
       );
       y += 52;
+      const next = relay.stage === "asia" ? "　優勝すれば12月の世界選手権のリレーへ" : "";
       const note = this.m.text(
         28,
         y,
-        `${relay.gender === "f" ? "女子" : "男子"}　自クラブの代表：${who}　（空いた枠はよそのクラブの代表が泳ぐ）`,
+        `400m　自クラブの代表 ${relay.members.length}人：${who}（空いた枠はよそのクラブの代表が泳ぐ）${next}`,
         11.5,
         "#f5b7b1",
         false,
@@ -313,6 +317,23 @@ export class CompetitionEntryModal {
   devSelectFirst(): void {
     const c = this.state.competitionsForClub().filter(isTimeTrial);
     if (c.length > 0) this.selectComp(c[0]);
+  }
+
+  /**
+   * 【見た目確認】記録会で勝ち上がっている子の行（?open=comp:won）。
+   * 先頭の2人に地区記録会を2種目ずつ突破させ、都道府県記録会を別の種目で開く
+   * ＝「…で勝ち上がっている」の長い理由が出る絵。
+   */
+  devSelectWon(): void {
+    const first = this.state.competitionsForClub().filter(isTimeTrial)[0];
+    if (!first) return;
+    const athletes = this.state.eligibleAthletesFor(first).slice(0, 2);
+    for (const a of athletes) a.season.clearedStages.push("kk_area@free-100", "kk_area@back-50");
+    const next = this.state.competitionsForClub().filter(isTimeTrial)[1];
+    if (!next) return;
+    this.selectComp(next);
+    this.event = { stroke: "breast", distance: 200 };
+    this.showEntry();
   }
 
   private selectComp(comp: Competition): void {
@@ -428,9 +449,10 @@ export class CompetitionEntryModal {
       return;
     }
 
-    const rh = 84; // 得意種目・コンディション・標準記録まで入れたぶん、行を高くしてある
-    athletes.forEach((s, i) => this.buildRow(s, comp, this.listTop + 6 + i * rh, rh));
-    this.m.setContentHeight(this.listTop + 14 + athletes.length * rh);
+    // 行の高さは人によって違う（出られない理由がある子は1段ふえる）ので、積み上げて置く
+    let rowY = this.listTop + 6;
+    for (const s of athletes) rowY += this.buildRow(s, comp, rowY);
+    this.m.setContentHeight(rowY + 8);
 
     // --- 下段：選んだ人数と出場ボタン
     const fy = this.ph - 34;
@@ -464,11 +486,28 @@ export class CompetitionEntryModal {
       .setEnabled(n > 0 && afford.ok);
   }
 
-  private buildRow(s: Student, comp: Competition, y: number, rh: number): void {
+  /** 1人ぶんの行を置いて、その行の高さを返す。 */
+  private buildRow(s: Student, comp: Competition, y: number): number {
     const body = this.m.body;
     const w = this.pw - 40 - this.m.scrollGutter;
     const picked = this.chosen.some((x) => x.id === s.id);
     const status = this.state.raceEntryStatus(s, comp, this.chosen, this.event);
+    // 右寄せの文字は ⓘ の手前で止める
+    const right = 20 + w - 12 - (this.opts.onOpenCard ? INFO_W : 0);
+
+    /**
+     * 【出られない理由は4段目に置く】（2026-10-13）
+     * 以前は3段目の右端に右寄せで書いていたので、「自由形100m・背泳ぎ50m で勝ち上がっている」のような
+     * 長い理由が、左のクラス・学年やコンディションの上に重なっていた。
+     * 理由がある子だけ行を高くして、専用の段に折り返して書く。
+     */
+    let reason: Phaser.GameObjects.Text | null = null;
+    if (!status.ok && status.reason) {
+      reason = this.m.text(84, y + 60, "", 12, "#e59866", false, body);
+      setJaWrap(reason, right - 84);
+      reason.setText(status.reason);
+    }
+    const rh = reason ? 60 + reason.height + 14 : 84;
     // いま選んでいる種目が、その子の得意そのものか（泳法だけ一致かも見る）
     const sameStroke = s.fav.stroke === this.event.stroke;
     const exact = sameStroke && s.fav.distance === this.event.distance;
@@ -477,6 +516,8 @@ export class CompetitionEntryModal {
       .rectangle(20 + w / 2, y + rh / 2 - 4, w, rh - 8, picked ? 0x24506b : 0x1c3550, 1)
       .setStrokeStyle(picked ? 2 : 1, picked ? 0xf7dc6f : 0x2e4a66, 1);
     body.add(rect);
+    // 理由の文字は先に置いて高さを測ったので、枠をその後ろへ回す
+    if (reason) body.moveBelow<Phaser.GameObjects.GameObject>(rect, reason);
     // 行を長押しで、**この行の選手**のカードへ（行は描き直すたびに作り直すので、s をそのまま使える）。
     // スクロールの窓の外（ヘッダの裏）に隠れた行では反応させない
     if (this.opts.onOpenCard) {
@@ -497,9 +538,6 @@ export class CompetitionEntryModal {
         body,
       );
     }
-    // 右寄せの文字は ⓘ の手前で止める
-    const right = 20 + w - 12 - (this.opts.onOpenCard ? INFO_W : 0);
-
     // チェックボタン（押すと出場メンバーに入る／外れる）
     const btn = this.m.button(
       52,
@@ -560,9 +598,7 @@ export class CompetitionEntryModal {
         .setOrigin(1, 0);
     }
 
-    if (!status.ok && status.reason) {
-      this.m.text(right, y + 44, status.reason, 11, "#e59866", false, body).setOrigin(1, 0);
-    }
+    return rh;
   }
 
   /** 行の長押し：その選手のカードへ（戻ってきたら、選びかけの内容をそのまま戻す）。 */

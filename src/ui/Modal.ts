@@ -162,6 +162,11 @@ export class Modal {
     opts: ButtonOptions = {},
     parent: Phaser.GameObjects.Container = this.container,
   ): Button {
+    // スクロールする中身のボタンは、窓の中で押したときだけ反応させる（→ ButtonOptions.canPress）。
+    // 窓の外へ流れた行のボタンが、フッタの名前などを触ったときに裏で押されて別の選手が開いていた
+    if (parent === this.body && !opts.canPress) {
+      opts = { ...opts, canPress: (p) => !this.view || this.isInsideView(p.x, p.y) };
+    }
     const btn = new Button(this.scene, x, y, w, h, label, fn, opts);
     parent.add(btn); // Container.add が display list から引き取る
     return btn;

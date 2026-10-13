@@ -22,9 +22,11 @@ import {
   STAT_KEYS,
   predictTime,
   createStudent,
+  noteMeetResult,
   STROKE_LABEL,
   STROKE_SHORT,
   type Stroke,
+  type Gender,
   formatTime,
   type StatKey,
   type Student,
@@ -149,7 +151,7 @@ import { SystemModal, type SaveAttempt } from "../ui/SystemModal";
 import { SettingsModal } from "../ui/SettingsModal";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { CompetitionResult, RelayResult } from "../sim/state";
-import { RELAY_DISTANCE, RELAY_ORDER, RELAY_SOURCE_COMP } from "../sim/relay";
+import { RELAY_ASIA_WIN, RELAY_DISTANCE, RELAY_EVENT, RELAY_ORDER, RELAY_SOURCE_COMP } from "../sim/relay";
 import { attachLongPress } from "../ui/longPress";
 import { RetireRecapModal } from "../ui/RetireRecapModal";
 import { FacilityShopModal } from "../ui/FacilityShopModal";
@@ -1186,13 +1188,13 @@ export class FacilityScene extends Phaser.Scene {
       return;
     }
     /**
-     * メドレーリレーの会場（?open=relay／?open=relay:solo＝自クラブ1人だけ）。
+     * メドレーリレーの会場（?open=relay＝11月アジア選手権／:solo＝自クラブ1人だけ／:world＝12月世界選手権）。
      * 本編では 10月の日本選手権で 100m を優勝しないと出られないので、
-     * ここでは日本代表の記録を直に持たせて会場を開く。
+     * ここでは日本代表の記録を直に持たせて会場を開く（:world はアジアのリレー優勝の印も付ける）。
      */
     if (what === "relay") {
       const strokes: Stroke[] = cls === "solo" ? ["back"] : ["back", "breast", "fly", "free"];
-      this.state.month = 12;
+      this.state.month = cls === "world" ? 12 : 11;
       this.state.gems = 999999;
       this.state.students.pro = [];
       strokes.forEach((stroke, i) => {
@@ -1204,13 +1206,16 @@ export class FacilityScene extends Phaser.Scene {
         s.strokeProf[stroke] = 900;
         s.season = {
           year: this.state.year,
-          clearedStages: [stageEventKey(RELAY_SOURCE_COMP, { stroke, distance: RELAY_DISTANCE })],
+          clearedStages: [
+            stageEventKey(RELAY_SOURCE_COMP, { stroke, distance: RELAY_DISTANCE }),
+            ...(cls === "world" ? [stageEventKey(RELAY_ASIA_WIN, RELAY_EVENT)] : []),
+          ],
           standards: [],
           standardEvents: [],
         };
         this.state.students.pro.push(s);
       });
-      this.enterRelay();
+      this.enterRelay("m");
       return;
     }
     /**
@@ -1297,6 +1302,21 @@ export class FacilityScene extends Phaser.Scene {
           stats: Object.fromEntries(STAT_KEYS.map((k) => [k, target!.stats[k] * r])) as Record<StatKey, number>,
         }));
       }
+      // 【見た目確認】大会の戦績をでっち上げる（?meets=1）。成績タブの「大会の戦績」「表彰台」の絵
+      if (this.dev?.meets) {
+        const y = this.state.year;
+        const fake: [string, number, number, Stroke, number, number][] = [
+          ["地域ブロック予選（中学）", y, 6, "free", 100, 2],
+          ["都道府県予選（中学）", y, 5, "free", 100, 1],
+          ["地区記録会", y, 3, "back", 50, 3],
+          ["地区予選（中学）", y, 4, "free", 100, 1],
+        ];
+        for (const [meet, yy, mm, stroke, dist, rank] of fake.reverse()) {
+          noteMeetResult(target, meet, { stroke, distance: dist }, rank, { year: yy, month: mm });
+        }
+        noteMeetResult(target, "地区記録会", { stroke: "free", distance: 100 }, null, { year: y, month: 2 });
+        noteMeetResult(target, "全国大会（中学）", { stroke: "free", distance: 100 }, 6, { year: y, month: 7 });
+      }
       this.openCard(target);
       if (this.dev?.tab) this.cardModal?.showTab(this.dev.tab);
       // 比較を入れた状態で開く（?cmp=first／?cmp=rival）
@@ -1338,6 +1358,8 @@ export class FacilityScene extends Phaser.Scene {
     if (what === "camp") {
       this.onCamp();
       if (cls === "alt") this.camp?.devPickPhase("altitude");
+      if (cls === "aus") this.camp?.devPickPhase("australia");
+      if (cls === "overseas") this.camp?.devTypePage(1);
       return;
     }
     // 入会キャンペーンの帯（?open=enroll）と、そこから開く今回入会した子の一覧（?open=enroll:list）
@@ -1359,7 +1381,13 @@ export class FacilityScene extends Phaser.Scene {
         .slice(0, 3);
       const picked = go.length > 0 ? go : [target];
       this.state.gems = Math.max(this.state.gems, 100_000);
-      this.state.runCamp(picked, { id: cls === "alt" ? "altitude" : "sea", stayDays: 21, intensity: "normal" });
+      const id = cls === "alt" ? "altitude" : cls === "aus" ? "australia" : "sea";
+      // 海外（:aus）はクラブの格と資金の条件があるので、見た目確認では満たしておく
+      if (id === "australia") {
+        this.state.clubAchievement = Math.max(this.state.clubAchievement, 1e9);
+        this.state.gems = Math.max(this.state.gems, 10_000_000);
+      }
+      this.state.runCamp(picked, { id, stayDays: 21, intensity: "normal" });
       if (what === "campback" && this.state.activeCamp) {
         this.state.activeCamp.weeksLeft = 1;
         this.state.onDayRoll();
@@ -1410,7 +1438,8 @@ export class FacilityScene extends Phaser.Scene {
     // 大会の申し込み画面（?open=comp）。標準記録の並びを確かめるのに使う
     if (what === "comp") {
       this.onCompetitions();
-      this.compModal?.devSelectFirst();
+      if (cls === "won") this.compModal?.devSelectWon();
+      else this.compModal?.devSelectFirst();
       return;
     }
     if (what === "room") {
@@ -6597,7 +6626,7 @@ export class FacilityScene extends Phaser.Scene {
       {
         restore,
         onOpenConfirm: (c) => this.openMajorConfirm(c),
-        onRelay: () => this.enterRelay(),
+        onRelay: (g) => this.enterRelay(g),
         // 選手の行を長押しでその選手のカードへ。閉じると、選んでいた大会・種目・メンバーのまま戻る
         onOpenCard: (s, snap) => {
           this.closeCompModal();
@@ -6608,15 +6637,15 @@ export class FacilityScene extends Phaser.Scene {
   }
 
   /**
-   * メドレーリレー（12月の世界選手権）の会場へ。
+   * メドレーリレー（11月のアジア選手権／12月の世界選手権）の会場へ。
    *
    * 個人種目と同じ会場（MeetScene）を使うが、**予選が無く1本勝負**で、
    * 4人が1往復ずつ泳ぐ（→ MeetScene.startRelay）。
    * 結果は runRelay が確定させる（報酬・熟練度・実績もそこで配る）。
    */
-  private enterRelay(): void {
-    const entry = this.state.relayEntry();
-    const comp = competitionById("gen_sekai");
+  private enterRelay(gender: Gender): void {
+    const entry = this.state.relayEntries().find((e) => e.gender === gender);
+    const comp = entry?.comp;
     if (!entry || !comp) {
       this.toast("いまリレーは泳げない", "#e67e22", 1600);
       return;
@@ -6632,16 +6661,21 @@ export class FacilityScene extends Phaser.Scene {
         throw new Error("リレーでは resolve を使わない");
       },
       resolveRelay: () => {
-        result = this.state.runRelay();
+        result = this.state.runRelay(gender);
         return result;
       },
       onClose: () => {
         this.refreshHud();
         const r = result;
         if (r) {
+          const asia = r.stage === "asia";
           this.notices.push({
             icon: r.won ? "🏆" : "🇯🇵",
-            title: r.won ? "メドレーリレーで世界一！" : `メドレーリレー ${r.outcome.rank}位`,
+            title: r.won
+              ? asia
+                ? "メドレーリレーでアジア一！ 12月の世界選手権へ"
+                : "メドレーリレーで世界一！"
+              : `${comp.name} メドレーリレー ${r.outcome.rank}位`,
             detail: `${r.entries.map((e) => e.student.name).join("・")}　◆+${r.totalGems}　人気 +${r.totalPopularity}`,
             color: r.won ? "#f7dc6f" : "#8fd0ff",
           });
@@ -6894,7 +6928,7 @@ export class FacilityScene extends Phaser.Scene {
       }
       /**
        * 【日本代表の選出】日本選手権（10月）の 100m で優勝すると、
-       * その泳法の日本代表になり、12月の世界選手権でメドレーリレーを泳げる。
+       * その泳法の日本代表になり、11月のアジア選手権でメドレーリレーを泳げる（優勝すれば12月の世界選手権へ）。
        * ここで知らせないと、大会画面にリレーの行が出ていることに気づけない。
        */
       if (comp.id === RELAY_SOURCE_COMP && ev.distance === RELAY_DISTANCE && RELAY_ORDER.includes(ev.stroke)) {
@@ -6902,7 +6936,7 @@ export class FacilityScene extends Phaser.Scene {
           this.notices.push({
             icon: "🇯🇵",
             title: `${w.name} が日本代表に`,
-            detail: `${STROKE_LABEL[ev.stroke]}${ev.distance}mの優勝者として、12月の世界選手権でメドレーリレーを泳げる`,
+            detail: `${STROKE_LABEL[ev.stroke]}${ev.distance}mの優勝者として、11月のアジア選手権でメドレーリレーを泳げる（優勝すれば12月の世界選手権へ）`,
             color: "#8fd0ff",
             onTap: () => this.onCompetitions(),
           });

@@ -21,11 +21,16 @@ import { swimModeFor } from "../iso/people";
  */
 
 const W = 244;
-const H = 84;
+/**
+ * 高さは2段ぶん（行き先の名前／あと◯週・◯人）＋水面。
+ * 以前は名前と「あと◯週・◯人」を同じ行の左右に置いていて、
+ * 「オーストラリア冬季合宿」のような長い名前で重なっていた（2026-10-13 に段を分けた）。
+ */
+const H = 100;
 const X = 8;
 const Y = GAME_HEIGHT - FOOTER_H - H - 10;
 /** 水面（泳ぐ帯）の上端と高さ（小窓の中の座標）。 */
-const WATER_TOP = 34;
+const WATER_TOP = 50;
 const WATER_H = H - WATER_TOP - 6;
 /** 一度に泳がせる人数（多いと帯が詰まって誰が誰だか分からない）。 */
 const MAX_SWIMMERS = 3;
@@ -78,9 +83,7 @@ export class CampBanner {
       color: "#f7dc6f",
       fontStyle: "bold",
     });
-    this.sub = scene.add
-      .text(W - 10, 8, "", { fontFamily: "sans-serif", fontSize: "13px", color: "#dfe6ec" })
-      .setOrigin(1, 0);
+    this.sub = scene.add.text(10, 27, "", { fontFamily: "sans-serif", fontSize: "13px", color: "#dfe6ec" });
     this.root.add([this.title, this.sub]);
 
     // 押すと合宿に出ている子の一覧へ（施設のタップに抜けないよう、ここで止める）
@@ -112,8 +115,20 @@ export class CampBanner {
 
     const def = campDef(camp.plan.id);
     const icon = def.isAltitude ? "🏔" : def.region === "overseas" ? "✈" : "🏕";
-    this.title.setText(`${icon} ${def.label}`);
-    this.sub.setText(`あと${camp.weeksLeft}週・${campers.length}人`);
+    const title = `${icon} ${def.label}`;
+    const sub = `あと${camp.weeksLeft}週・${campers.length}人`;
+    if (title !== this.title.text || sub !== this.sub.text) {
+      this.title.setText(title);
+      this.sub.setText(sub);
+      // 名前は削れないので、小窓の幅に入るまで字を小さくする
+      const limit = W - 20;
+      let size = 15;
+      this.title.setFontSize(size);
+      while (this.title.width > limit && size > 10) {
+        size -= 0.5;
+        this.title.setFontSize(size);
+      }
+    }
 
     this.t += dt;
     this.drawWater(def.isAltitude);

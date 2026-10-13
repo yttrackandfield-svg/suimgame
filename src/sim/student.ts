@@ -193,6 +193,26 @@ export interface StatSnapshot {
   stats: Record<StatKey, number>;
 }
 
+/** 大会1つぶんの出場の集計。 */
+export interface MeetTally {
+  /** 出場した回数（種目ごとに1回）。 */
+  entries: number;
+  /** 決勝に残った回数。 */
+  finals: number;
+}
+
+/** 3位以内に入った記録1件。 */
+export interface PodiumRecord {
+  /** ゲーム内の「◯年目」。 */
+  year: number;
+  month: number;
+  /** 大会名（「全国大会（中学）」「地区記録会」など）。 */
+  meet: string;
+  event: RaceEvent;
+  /** 1〜3。 */
+  rank: number;
+}
+
 export interface Student {
   id: number;
   name: string;
@@ -306,6 +326,14 @@ export interface Student {
    * 1人あたり年1つなので、選手生活まるごとでも20件ほどにしかならない。
    */
   history: StatSnapshot[];
+
+  /**
+   * 【大会の戦績】大会名ごとの出場回数と、決勝に残った回数（→ noteMeetResult）。
+   * 記録会は段ごとの名前（「地区記録会」など）でまとめる。月ごとに id が変わるため。
+   */
+  meetLog: Record<string, MeetTally>;
+  /** 【表彰台】3位以内に入った大会（新しい順・PODIUM_MAX 件まで）。 */
+  podiums: PodiumRecord[];
 
   /**
    * 【廃止】専属コーチの id（2026-09-27 に機能ごと無くした）。
@@ -868,6 +896,31 @@ export function applyAging(s: Student): Record<StatKey, number> {
  */
 export const HISTORY_MAX = 32;
 
+/** 表彰台の記録を残す件数（古いものから消す）。 */
+export const PODIUM_MAX = 40;
+
+/**
+ * 大会1本の結果を戦績に積む。
+ * finalRank は決勝の順位（決勝に残れなかったら null）。3位以内なら表彰台にも残す。
+ */
+export function noteMeetResult(
+  s: Student,
+  meet: string,
+  event: RaceEvent,
+  finalRank: number | null,
+  when: { year: number; month: number },
+): void {
+  if (!s.meetLog) s.meetLog = {};
+  if (!Array.isArray(s.podiums)) s.podiums = [];
+  const t = (s.meetLog[meet] ??= { entries: 0, finals: 0 });
+  t.entries += 1;
+  if (finalRank != null) t.finals += 1;
+  if (finalRank != null && finalRank <= 3) {
+    s.podiums.unshift({ year: when.year, month: when.month, meet, event: { ...event }, rank: finalRank });
+    if (s.podiums.length > PODIUM_MAX) s.podiums.length = PODIUM_MAX;
+  }
+}
+
 /**
  * その年の能力を記録する。**同じ年に2回は記録しない**（年1回だけ）。
  *
@@ -1376,6 +1429,8 @@ export function createStudent(
     pinned: false,
     personalCoachId: null,
     history: [],
+    meetLog: {},
+    podiums: [],
     age: 0,
   };
   s.age = estimatedAge(s.grade);

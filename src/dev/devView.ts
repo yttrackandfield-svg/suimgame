@@ -103,6 +103,8 @@ export interface DevView {
   cmp: string | null;
   /** 開く選手に、それらしい成長の履歴をでっち上げる（比較の絵を撮るため）。 */
   hist: boolean;
+  /** 選手カードに大会の戦績をでっち上げる（?meets=1）。 */
+  meets: boolean;
   /**
    * 空回しの**前に**、そのクラスへ人を移しておく（"ikuseiB:8" のように書く）。
    * 育成以上は開始時に誰も居ないので、これが無いと1日回しても検証できない。
@@ -142,6 +144,7 @@ export function devView(): DevView | null {
     tab: Math.max(0, Math.min(3, Number(q.get("tab") ?? 0) || 0)),
     cmp: q.get("cmp"),
     hist: q.get("hist") === "1",
+    meets: q.get("meets") === "1",
     stock: q.get("stock"),
     press: q.get("press") === "1",
     prof: q.has("prof") ? Math.max(0, Math.min(999, Number(q.get("prof")) || 0)) : -1,

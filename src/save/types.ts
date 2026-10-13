@@ -777,6 +777,13 @@ export interface SaveDataV29 extends Omit<SaveDataV28, "version" | "game"> {
 export interface StudentSaveV30 extends StudentSaveV29 {
   /** 退会する通算月数。null／未定義＝予定なし。 */
   leaveAtMonth?: number | null;
+  /**
+   * 大会の戦績（2026-10-13 追加）。足しただけで、無いセーブは「記録なし」として読めるので版は上げていない。
+   *  - meets  … 大会名ごとの [出場回数, 決勝に残った回数]
+   *  - podium … 3位以内に入った記録 [年, 月, 大会名, 泳法, 距離, 順位]（新しい順）
+   */
+  meets?: Record<string, [number, number]>;
+  podium?: [number, number, string, string, number, number][];
 }
 
 export interface GameSaveV30 extends Omit<GameSaveV29, "students"> {

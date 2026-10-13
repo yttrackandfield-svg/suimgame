@@ -818,7 +818,69 @@ export class PlayerCardModal {
       `記録 ${Math.round(s.bestTimeScore)} ＋ 大会 ${Math.round(s.achievePoints)}`,
       "#bdc3c7",
     );
+    y = this.meetLogSection(y + 10);
+    y = this.podiumSection(y);
     return y + 6;
+  }
+
+  /** 大会の戦績：通算の出場・決勝の回数と、大会ごとの内訳。 */
+  private meetLogSection(y0: number): number {
+    const m = this.modal;
+    const log = Object.entries(this.student.meetLog ?? {});
+    m.text(PAD, y0, "大会の戦績", 13.5, "#9fb3c4", true, m.body);
+    let y = y0 + 20;
+    if (log.length === 0) {
+      return this.row(y, "出場", "まだ大会に出ていない", "#95a6b8") + 8;
+    }
+    const entries = log.reduce((n, [, v]) => n + v.entries, 0);
+    const finals = log.reduce((n, [, v]) => n + v.finals, 0);
+    y = this.row(y, "出場", `${entries} 回（決勝 ${finals} 回）`, "#aed6f1");
+    // 決勝に多く残った大会から。同じなら出た回数の多い順
+    log.sort((a, b) => b[1].finals - a[1].finals || b[1].entries - a[1].entries);
+    for (const [name, v] of log) {
+      const t = m.text(
+        PAD + 12,
+        y,
+        `${name}　出場 ${v.entries} 回・決勝 ${v.finals} 回`,
+        13.5,
+        "#dfe6ec",
+        false,
+        m.body,
+      );
+      setJaWrap(t, this.cw - 16);
+      y += t.height + 5;
+    }
+    return y + 8;
+  }
+
+  /** 表彰台：3位以内に入った大会（新しい順）。 */
+  private podiumSection(y0: number): number {
+    const m = this.modal;
+    const list = this.student.podiums ?? [];
+    m.text(PAD, y0, "表彰台（3位以内）", 13.5, "#9fb3c4", true, m.body);
+    let y = y0 + 20;
+    if (list.length === 0) {
+      const t = m.text(PAD + 12, y, "まだ無い", 13.5, "#95a6b8", false, m.body);
+      return y + t.height + 8;
+    }
+    const color = ["#f7dc6f", "#d5dbdb", "#e59866"];
+    for (const p of list) {
+      // 1行目：いつ・どの大会。2行目：種目と順位（長い大会名でも順位が隠れないよう段で分ける）
+      const when = m.text(PAD + 12, y, `${p.year}年目 ${p.month}月　${p.meet}`, 13.5, "#dfe6ec", false, m.body);
+      setJaWrap(when, this.cw - 16);
+      y += when.height + 2;
+      const what = m.text(
+        PAD + 24,
+        y,
+        `${STROKE_LABEL[p.event.stroke]} ${p.event.distance}m　${p.rank}位`,
+        14,
+        color[p.rank - 1] ?? "#dfe6ec",
+        true,
+        m.body,
+      );
+      y += what.height + 8;
+    }
+    return y;
   }
 
   // ================================================================ 特徴タブ

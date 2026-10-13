@@ -34,7 +34,7 @@ export interface MeetData {
    */
   dayCard?: { label: string; mine: string; current: boolean }[];
   /**
-   * リレーとして走らせるとき（12月の世界選手権のメドレーリレー）。
+   * リレーとして走らせるとき（11月アジア選手権／12月世界選手権のメドレーリレー）。
    * これがあるときは個人種目の予選→決勝ではなく、**4人が1往復ずつ泳ぐ**1本勝負になる。
    * resolve は呼ばれない（結果は resolveRelay が返す）。
    */
@@ -534,7 +534,7 @@ export class MeetScene extends Phaser.Scene {
     for (const e of relay.entries) {
       this.celebrate.push({
         icon: relay.won ? "🏆" : "🇯🇵",
-        title: relay.won ? `${e.student.name} 世界一！` : `${e.student.name} 日本代表`,
+        title: relay.won ? `${e.student.name} ${relay.stage === "asia" ? "アジア一" : "世界一"}！` : `${e.student.name} 日本代表`,
         subtitle: `${STROKE_LABEL[e.stroke]} ${RELAY_DISTANCE}m　${formatTime(e.time)}`,
         color: relay.won ? "#f7dc6f" : "#8fd0ff",
         portrait: ensurePortrait(this, e.student),
@@ -592,7 +592,11 @@ export class MeetScene extends Phaser.Scene {
     const head = mk(
       GAME_WIDTH / 2,
       py + 42,
-      relay.won ? "日本代表が世界一になった" : `日本代表は ${relay.outcome.rank}位`,
+      relay.won
+        ? relay.stage === "asia"
+          ? "日本代表がアジア一！ 世界選手権のリレーへ"
+          : "日本代表が世界一になった"
+        : `日本代表は ${relay.outcome.rank}位`,
       15,
       relay.won ? "#f7dc6f" : "#ecf0f1",
       true,

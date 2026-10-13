@@ -29,6 +29,7 @@ import {
   strokeCapOf,
   strokeProfOf,
   addMeetStrokeProf,
+  noteMeetResult,
   recordSnapshot,
   effectivePlan,
   energyMax,
@@ -206,13 +207,16 @@ import {
   type GuestVisitContext,
 } from "./satisfaction";
 import {
+  markAsiaRelayWin,
   markRelaySwum,
-  pickRelayGender,
   relayAlreadySwum,
   relaySelection,
+  RELAY_COMP,
   RELAY_DISTANCE,
   simulateRelay,
+  wonAsiaRelay,
   type RelayOutcome,
+  type RelayStage,
 } from "./relay";
 import { crowdFactorAt } from "./daytime";
 import {
@@ -572,7 +576,20 @@ export interface CompetitionResult {
 }
 
 /** リレー（12月の世界選手権）1回ぶんの結果。 */
+/** いま泳げるリレー1本（段×性別）。 */
+export interface RelayEntry {
+  stage: RelayStage;
+  comp: Competition;
+  gender: Gender;
+  /** 自クラブから泳ぐ子。 */
+  members: Student[];
+  /** 4枠（RELAY_ORDER 順）。null はよそのクラブの代表が泳ぐ枠。 */
+  slots: (Student | null)[];
+}
+
 export interface RelayResult {
+  /** アジア選手権か世界選手権か。 */
+  stage: RelayStage;
   outcome: RelayOutcome;
   /** 自クラブの選手1人ぶんの取り分。 */
   entries: { student: Student; stroke: Stroke; time: number; gems: number; popularity: number }[];
@@ -5811,6 +5828,8 @@ export class GameState {
       // 個人メドレーの種目は4泳法へ分けて積む（個メ専用の熟練度は持たない）。
       const meetMult = STROKE.meetScaleMult[comp.scale] ?? 1;
       addMeetStrokeProf(s, event.stroke, (STROKE.meetGain + (entrant.win ? STROKE.winBonus : 0)) * meetMult);
+      // 【戦績】大会名ごとの出場・決勝の回数と、3位以内の記録（→ 選手カードの成績タブ）
+      noteMeetResult(s, comp.name, event, entrant.finalRank, { year: this.year, month: this.month });
 
       // 格は「実際の成績」で決まる：出したタイム・順位・突破した標準記録。
       // 自己新かどうかは演出に使うので受け取っておく。
@@ -5846,52 +5865,57 @@ export class GameState {
     return { outcome, entries, best, totalGems, totalPopularity, entryCost, passion, mayorPrize, coachMet };
   }
 
-  // -------------------------------------------------------------- リレー（12月の世界選手権）
+  // -------------------------------------------------------------- リレー（11月アジア → 12月世界）
 
   /**
-   * 今リレーを泳げるか。泳げるなら「日本代表に選ばれている自クラブの選手」を返す。
+   * 今泳げるリレーの一覧（男女別。両方に代表がいれば2本）。
    *
-   * 条件は3つ。
-   *   ① 12月の世界選手権が開かれている月（→ CALENDAR の gen_sekai）
+   * 条件は4つ。
+   *   ① その段の大会が開かれている月（11月アジア選手権／12月世界選手権）
    *   ② 10月の日本選手権で 100m のどれかの泳法で優勝した選手がいる
-   *   ③ 今年まだ泳いでいない（記録は season に付くので、年が変わればまた泳げる）
+   *   ③ 世界選手権は、**その性別がアジア選手権のリレーで優勝している**こと
+   *   ④ 今年まだその段を泳いでいない（記録は season に付くので、年が変わればまた泳げる）
    */
-  relayEntry(): { gender: Gender; members: Student[]; slots: (Student | null)[] } | null {
-    const comp = competitionById("gen_sekai");
-    if (!comp || comp.month !== this.month) return null;
+  relayEntries(): RelayEntry[] {
+    const stage = (Object.keys(RELAY_COMP) as RelayStage[]).find(
+      (st) => competitionById(RELAY_COMP[st])?.month === this.month,
+    );
+    if (!stage) return [];
+    const comp = competitionById(RELAY_COMP[stage]);
+    if (!comp) return [];
     // 日本選手権は育成Bからでも出られるので、日本代表も育成B以上の全員から選ぶ
     const pool = this.timeTrialAthletes();
-    const gender = pickRelayGender(pool);
-    if (!gender) return null;
-    const slots = relaySelection(pool, gender);
-    const members = slots.filter((s): s is Student => s != null);
-    if (members.length === 0) return null;
-    if (members.some((s) => relayAlreadySwum(s))) return null;
-    return { gender, members, slots };
+    const out: RelayEntry[] = [];
+    for (const gender of ["m", "f"] as Gender[]) {
+      const slots = relaySelection(pool, gender);
+      const members = slots.filter((s): s is Student => s != null);
+      if (members.length === 0) continue;
+      if (members.some((s) => relayAlreadySwum(s, stage))) continue;
+      if (stage === "sekai" && !pool.some((s) => s.gender === gender && wonAsiaRelay(s))) continue;
+      out.push({ stage, comp, gender, members, slots });
+    }
+    return out;
   }
 
   /**
-   * リレーを泳ぐ。
+   * リレーを泳ぐ（その性別の1本）。
    *
-   * 報酬は世界大会1回ぶん（→ SCALE_REWARD.sekai）を**チームの順位で割り引き**、
+   * 報酬はその大会1回ぶん（→ SCALE_REWARD）を**チームの順位で割り引き**、
    * 出た選手の人数で分ける。個人種目と同じ額を1人ずつに配ると、
-   * 4人で出たときに世界大会4回ぶんの稼ぎになってしまう。
+   * 4人で出たときに大会4回ぶんの稼ぎになってしまう。
+   * アジア選手権で優勝すると、同じ性別で世界選手権のリレーへ進める。
    */
-  runRelay(): RelayResult | null {
-    const entry = this.relayEntry();
-    const comp = competitionById("gen_sekai");
-    if (!entry || !comp) return null;
+  runRelay(gender: Gender): RelayResult | null {
+    const entry = this.relayEntries().find((e) => e.gender === gender);
+    if (!entry) return null;
+    const { comp, stage } = entry;
 
-    /**
-     * 【壁のぶんも足す】リレーは**予選が無く、決勝だけ**を泳ぐ。
-     * 個人種目の決勝は `rivalLevelOf + SCALE_FINAL_WALL` の相手と泳ぐので、
-     * ここで壁を足さないと「世界大会なのに予選レベルの相手」になってしまう。
-     */
-    const level = rivalLevelOf(comp) + finalWallOf(comp);
-    const outcome = simulateRelay(this.timeTrialAthletes(), entry.gender, level, this.rand, (s, ev) =>
+    // 相手の強さは段ごとの表（→ RELAY.level）。予選が無く決勝だけなので、決勝の壁込みの値にしてある
+    const outcome = simulateRelay(this.timeTrialAthletes(), entry.gender, stage, this.rand, (s, ev) =>
       this.raceExtraFactor(s, ev),
     );
-    markRelaySwum(outcome.members);
+    markRelaySwum(outcome.members, stage);
+    if (stage === "asia" && outcome.rank === 1) markAsiaRelayWin(outcome.members);
 
     // 順位の取り分（1位を満額に、表彰台まではしっかり、あとは薄く）
     const mult = outcome.rank === 1 ? 1 : outcome.rank <= 3 ? 0.45 : outcome.rank <= 5 ? 0.2 : 0.08;
@@ -5916,6 +5940,11 @@ export class GameState {
       addMeetStrokeProf(s, leg.stroke, (STROKE.meetGain + (won ? STROKE.winBonus : 0)) * meetMult);
       // 自己ベストは 100m のその泳法として拾う（リレーの1本も泳いだ記録）
       recordTime(s, { stroke: leg.stroke, distance: RELAY_DISTANCE }, leg.time);
+      // リレーは決勝だけを泳ぐので、出れば決勝に残った扱い
+      noteMeetResult(s, `${comp.name}（リレー）`, { stroke: leg.stroke, distance: RELAY_DISTANCE }, outcome.rank, {
+        year: this.year,
+        month: this.month,
+      });
 
       // 実績（個人種目の1/2。チームの成績なので個人の手柄は半分）
       const earned = (RANK.scalePoints[comp.scale] ?? 0) * mult * 0.5;
@@ -5934,7 +5963,7 @@ export class GameState {
     if (won) this.championships += 1;
     this.gems += totalGems;
     this.addPopularity(totalPopularity);
-    return { outcome, entries, totalGems, totalPopularity, passion, won };
+    return { stage, outcome, entries, totalGems, totalPopularity, passion, won };
   }
 
   // -------------------------------------------------------------- チュートリアル完了ボーナス

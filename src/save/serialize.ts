@@ -140,6 +140,11 @@ function saveStudent(s: Student): StudentSaveV30 {
       grade: h.grade,
       stats: packStats(h.stats, r2),
     })),
+    // 大会の戦績（版は上げていない。無ければ「記録なし」）
+    meets: Object.fromEntries(
+      Object.entries(s.meetLog ?? {}).map(([k, v]) => [k, [Math.round(v.entries), Math.round(v.finals)]]),
+    ),
+    podium: (s.podiums ?? []).map((p) => [p.year, p.month, p.meet, p.event.stroke, p.event.distance, p.rank]),
   };
 }
 
@@ -460,6 +465,30 @@ function reviveStudent(d: StudentSaveV30): Student {
       s.history.push({ year: Math.round(num(h.year, 0)), grade: str(h.grade, ""), stats });
     }
     s.history.sort((a, b) => a.year - b.year);
+  }
+
+  // 大会の戦績（2026-10-13〜）。壊れている件は捨てる
+  s.meetLog = {};
+  if (d.meets && typeof d.meets === "object") {
+    for (const [k, v] of Object.entries(d.meets)) {
+      if (!Array.isArray(v)) continue;
+      s.meetLog[k] = { entries: Math.max(0, Math.round(num(v[0], 0))), finals: Math.max(0, Math.round(num(v[1], 0))) };
+    }
+  }
+  s.podiums = [];
+  if (Array.isArray(d.podium)) {
+    for (const p of d.podium) {
+      if (!Array.isArray(p) || !VALID_STROKE.has(String(p[3]))) continue;
+      const rank = Math.round(num(p[5], 0));
+      if (rank < 1 || rank > 3) continue;
+      s.podiums.push({
+        year: Math.round(num(p[0], 0)),
+        month: Math.round(num(p[1], 1)),
+        meet: str(p[2], ""),
+        event: { stroke: p[3] as Stroke, distance: num(p[4], 100) },
+        rank,
+      });
+    }
   }
   return s;
 }
