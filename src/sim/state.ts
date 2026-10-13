@@ -5635,46 +5635,6 @@ export class GameState {
     return out;
   }
 
-  /**
-   * 前の段で優勝した選手を、次の大会に**自動でエントリー**する。
-   *
-   * 【なぜ自動か】勝ち上がりは「その種目で優勝した」という済んだ事実なので、
-   * 次の大会で同じ子・同じ種目をもう一度選び直させる意味がない。
-   * 出場確認の窓が開いたときにここを通しておけば、
-   * プレイヤーは**変えたいときだけ**確認画面をいじればよくなる。
-   *
-   * 出場費はここで払う。やめれば `setMajorEntries` が返金するので、
-   * 「勝手に取られっぱなし」にはならない。
-   * 上限（1レース6人・1大会のべ8人）とお金が足りなければ、入る順に入れて打ち切る。
-   *
-   * 返り値は実際に入った顔ぶれ（お知らせに出す）。
-   */
-  autoEnterQualified(comp: Competition): ConfirmCandidate[] {
-    if (!comp.requiresPrev) return [];
-    const already = this.majorEntriesOf(comp);
-    const key = (c: ConfirmCandidate): string => `${c.student.id}|${c.event.stroke}-${c.event.distance}`;
-    const have = new Set(already.map(key));
-    const add: ConfirmCandidate[] = [];
-    for (const c of this.majorConfirmCandidates(comp)) {
-      if (have.has(key(c))) continue;
-      have.add(key(c));
-      add.push(c);
-    }
-    if (add.length === 0) return [];
-
-    // 入るところまで入れる（上限・お金で弾かれたら、その手前で確定させる）
-    let best: ConfirmCandidate[] = already;
-    for (let n = 1; n <= add.length; n++) {
-      const want = [...already, ...add.slice(0, n)];
-      const r = this.setMajorEntries(comp, want);
-      if (!r.ok) break;
-      best = want;
-    }
-    // 途中で弾かれていたら、確実に通る組み合わせで確定し直す
-    if (best !== already) this.setMajorEntries(comp, best);
-    return best.slice(already.length);
-  }
-
   /** その主要大会に、いまエントリーしている選手と種目。 */
   majorEntriesOf(comp: Competition): ConfirmCandidate[] {
     const out: ConfirmCandidate[] = [];

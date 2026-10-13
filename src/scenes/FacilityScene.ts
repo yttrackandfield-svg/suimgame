@@ -1196,7 +1196,13 @@ export class FacilityScene extends Phaser.Scene {
       this.state.dayCount -= this.state.dayCount % 4;
       this.clock.week = 1;
       if (what === "confirm") {
-        const comp = competitionById("hi_area");
+        // :ken … 4人とも地区予選（高校）を得意種目で勝ち上がった状態で、都道府県予選の確認を開く
+        if (cls === "ken") {
+          for (const s of pick) {
+            s.season = { year: this.state.year, clearedStages: [stageEventKey("hi_area", s.fav)], standards: [], standardEvents: [] };
+          }
+        }
+        const comp = competitionById(cls === "ken" ? "hi_ken" : "hi_area");
         if (comp) this.openMajorConfirm(comp);
       } else {
         const boys = pick.filter((s) => s.gender === pick[0].gender);
@@ -6908,23 +6914,11 @@ export class FacilityScene extends Phaser.Scene {
     if (!comp) return;
     this.state.markConfirmAsked(comp.id);
     /**
-     * 【勝ち上がった子は自動でエントリー】前の段で優勝した種目は、もう決まっている。
-     * 窓が開いた時点で入れておき、**変えたいときだけ**確認画面をいじればよくする。
-     * 出場費はここで引かれるが、見送れば返る（→ setMajorEntries）。
+     * 【勝ち上がった子も自分で「エントリー」を押す】（2026-10-14）
+     * 以前は前の段で優勝した子を窓が開いた時点で自動エントリー（出場費も引いていた）していたので、
+     * 確認画面が最初から「✅ エントリー済み」になり、何を押せばいいのか分かりにくかった。
+     * いまは勝ち上がった子に**印を付けた状態で**開き、エントリーはプレイヤーが押す（→ MeetConfirmModal）。
      */
-    const auto = this.state.autoEnterQualified(comp);
-    if (auto.length > 0) {
-      this.notices.push({
-        icon: "✅",
-        title: `${comp.name} に自動エントリー`,
-        detail:
-          `${auto.map((c) => `${c.student.name}（${STROKE_LABEL[c.event.stroke]}${c.event.distance}m）`).join("・")}` +
-          "　前の段で優勝した種目。変えるなら出場確認から",
-        color: "#7fd1ae",
-        onTap: () => this.openMajorConfirm(comp),
-      });
-      this.refreshHud();
-    }
     this.notices.push({
       icon: "📣",
       title: `${comp.name} の出場確認`,

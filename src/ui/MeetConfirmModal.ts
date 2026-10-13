@@ -39,6 +39,8 @@ const FOOTER_H = 96;
  *   入口の大会       … 得意種目
  * 初めて開いたときは、1レースの上限まで予想タイムの速い順に印を付けてある
  *（出したくない子の印を外して「エントリー」を押すだけで済むように）。
+ * 勝ち上がりの大会（都道府県予選から上）は、前の段で優勝した種目に**全部**印を付けて開く。
+ * 自動ではエントリーしない＝出場費を払うのは「エントリー」を押したとき。
  * 男女別・種目別に1レースずつなので、1レースに入れる人数（maxRaceEntries）を超えては選べない。
  * 出場費はエントリーしたときに払い、ケガなどで当日出られない選手のぶんは返す。
  */
@@ -70,7 +72,9 @@ export class MeetConfirmModal {
           `${state.raceDayLabel(state.majorRaceDay())}開催［${SCALE_LABEL[comp.scale]}］。` +
           (isAreaMeet(comp)
             ? `育成B以上が出られます。種目も選べます（申し込みは のべ${state.maxMeetEntries()}人まで）。`
-            : `条件を満たした選手と種目です。出る選手に印を付けてエントリー（のべ${state.maxMeetEntries()}人まで）。`),
+            : comp.requiresPrev
+              ? `前の段で優勝した種目に印を付けてあります。確かめて「エントリー」を押すと申し込み（出場費はそのとき払う・のべ${state.maxMeetEntries()}人まで）。`
+              : `条件を満たした選手と種目です。出る選手に印を付けてエントリー（のべ${state.maxMeetEntries()}人まで）。`),
         // 一覧を送っている指が外に出ただけで閉じないように
         closeOnBackdrop: false,
       },
@@ -95,6 +99,22 @@ export class MeetConfirmModal {
     } else if (current.length > 0) {
       // 開き直したときは、いまのエントリーをそのまま出す
       for (const c of current) this.picked.add(this.key(c));
+    } else if (comp.requiresPrev) {
+      /**
+       * 【勝ち上がりの大会】前の段で優勝した種目は、もう出ることが決まっているようなもの。
+       * 1人が2種目で勝ち上がっていれば両方に印を付ける（上限を超えるぶんだけ外れる）。
+       */
+      const perGroup = new Map<string, number>();
+      let total = 0;
+      for (const r of this.rows) {
+        if (total >= state.maxMeetEntries()) break;
+        const g = this.groupKey(r);
+        const n = perGroup.get(g) ?? 0;
+        if (n >= state.maxRaceEntries()) continue;
+        perGroup.set(g, n + 1);
+        this.picked.add(this.key(r));
+        total++;
+      }
     } else {
       /**
        * 初めて開いたときの印は **1人1種目**。
