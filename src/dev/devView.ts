@@ -110,6 +110,12 @@ export interface DevView {
    * 育成以上は開始時に誰も居ないので、これが無いと1日回しても検証できない。
    */
   stock: string | null;
+  /** 寮を定員まで埋める（?dorm=1）。 */
+  dorm: boolean;
+  /** 館内の入寮者をすぐ寮へ向かわせる（?dorm=go。寮も埋める）。 */
+  dormGo: boolean;
+  /** focus した部屋の中のどこへ寄せるか（?at=dx,dy・回す前の向き）。 */
+  at: [number, number] | null;
   /** 全体練習を開いたあと、1人目の選手カードを開く（長押しの行き先の確認）。 */
   press: boolean;
   /** 開く選手の泳法の熟練度をこの値にする（0-999・負の値＝指定なし）。 */
@@ -146,6 +152,9 @@ export function devView(): DevView | null {
     hist: q.get("hist") === "1",
     meets: q.get("meets") === "1",
     stock: q.get("stock"),
+    dorm: q.get("dorm") === "1" || q.get("dorm") === "go",
+    dormGo: q.get("dorm") === "go",
+    at: q.get("at") ? (q.get("at")!.split(",").map(Number) as [number, number]) : null,
     press: q.get("press") === "1",
     prof: q.has("prof") ? Math.max(0, Math.min(999, Number(q.get("prof")) || 0)) : -1,
     dine: q.get("dine") === "1",

@@ -417,8 +417,15 @@ export class Person {
      *（水槽の真ん中のマスで決めると、水槽の絵より奥になって隠れる）。
      */
     flume: { lift: number; depthAt: Cell } | null = null,
+    /**
+     * 座っている間の重なり順を決めるマス（省略時は立っているマス）。
+     * ソファの座面のように、座る位置が什器の足元より奥にあると、そのままでは什器の後ろに隠れる。
+     * 什器と同じマスで決めると、什器の上に座って見える（→ 寮のソファ）。
+     */
+    seatDepth: Cell | null = null,
   ): void {
     if (this.state === "out" || this.state === "done") return;
+    this.seatDepth = seatDepth;
     this.path = [{ gx: this.gx, gy: this.gy }, ...route.slice(1)];
     this.pi = 1;
     this.state = "toRecov";
@@ -437,6 +444,8 @@ export class Person {
   private visitPurpose: "recover" | "measure" = "recover";
   /** 流水プールで泳いでいる（→ goRecover の flume）。 */
   private flume: { lift: number; depthAt: Cell } | null = null;
+  /** 座っている間の重なり順のマス（→ goRecover の seatDepth）。 */
+  private seatDepth: Cell | null = null;
 
   /** 流水プールを使っている（向かっている）なら、その水槽の置き場所（同じ水槽に2人入れないため）。 */
   get flumeAt(): Cell | null {
@@ -752,7 +761,8 @@ export class Person {
       this.sprite.setRotation(r.rot);
       this.sprite.setScale(this.baseScale);
       // 浸かっている人は湯面より手前に出す（湯の絵に埋もれないように）
-      this.sprite.setDepth(depthFor(this.gx, this.gy, 50));
+      const dc = this.seatDepth ?? { gx: this.gx, gy: this.gy };
+      this.sprite.setDepth(depthFor(dc.gx, dc.gy, 50));
       return;
     }
     this.stepAnim();

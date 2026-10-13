@@ -348,7 +348,7 @@ const RECOVERY_GAUGE_MAX = 3;
  * iso/facility.ts の ROOM_FITTINGS.science の機器の**手前**に置いてある。
  * 以前は効果（練習効率・ケガの治り）が数字で効くだけで、誰も入って来ない部屋だった。
  */
-const SCIENCE_SPOTS: readonly { dx: number; dy: number; pose: BathPose | null }[] = [
+const SCIENCE_SPOTS: readonly { dx: number; dy: number; pose: BathPose | null; depth?: { dx: number; dy: number } }[] = [
   { dx: 1.9, dy: 2.35, pose: null }, // 体組成スキャナ
   { dx: 1.4, dy: 3.75, pose: null }, // トレッドミル（呼気ガス）
   { dx: 2.55, dy: 2.75, pose: null }, // フォースプレートのスタート台
@@ -357,9 +357,40 @@ const SCIENCE_SPOTS: readonly { dx: number; dy: number; pose: BathPose | null }[
   { dx: 7.8, dy: 2.2, pose: null }, // 分析台（結果を聞く）
   { dx: 7.8, dy: 3.9, pose: null }, // 分析台
   { dx: 7.7, dy: 5.4, pose: null }, // アイスバスの横
-  { dx: 4.6, dy: 5.9, pose: "dine" }, // 待合のソファ
-  { dx: 5.4, dy: 5.9, pose: "dine" }, // 待合のソファ
+  // 待合のソファ（fnDormSofa @5.0,5.7 ×0.9）。座面の上に座り、重なり順はソファのマスで決める
+  { dx: 4.72, dy: 5.58, pose: "dine", depth: { dx: 5.0, dy: 5.72 } },
+  { dx: 5.08, dy: 5.58, pose: "dine", depth: { dx: 5.0, dy: 5.72 } },
 ];
+/**
+ * 【アスリート寮の過ごし場所】入寮している選手が、練習のあとに寮へ帰って過ごす位置（回す前の向きの dx,dy）。
+ * iso/facility.ts の ROOM_FITTINGS.dorm の什器の手前（ソファ・ひじ掛け椅子・スタディブース・キッチン・ランドリー）。
+ * 以前は入寮していても練習が終わると入口から帰ってしまい、寮には誰も入らなかった（2026-10-14）。
+ */
+/**
+ * depth … 座っている間の重なり順を決める什器のマス（→ Person.goRecover の seatDepth）。
+ * ソファの座面は什器の足元より奥にあるので、自分のマスで決めるとソファの後ろに隠れてしまう。
+ */
+const DORM_SPOTS: readonly { dx: number; dy: number; pose: BathPose | null; depth?: { dx: number; dy: number } }[] = [
+  // ラウンジのソファ（fnDormSofa @5.9,3.1）。座面は足元から約24px＝dine の持ち上げ（18px）でちょうど乗る
+  { dx: 5.6, dy: 2.98, pose: "dine", depth: { dx: 5.9, dy: 3.12 } },
+  { dx: 6.0, dy: 2.98, pose: "dine", depth: { dx: 5.9, dy: 3.12 } },
+  // ひじ掛け椅子（fnArmchair @3.9,4.6／@7.9,4.6）。椅子と同じマスに座る＝椅子より手前に描かれる
+  { dx: 3.9, dy: 4.6, pose: "dine" },
+  { dx: 7.9, dy: 4.6, pose: "dine" },
+  { dx: 5.5, dy: 2.3, pose: null }, // 大型ディスプレイの前
+  { dx: 9.6, dy: 3.75, pose: null }, // スタディブース
+  { dx: 9.8, dy: 5.75, pose: null }, // スタディブース
+  { dx: 7.8, dy: 5.7, pose: null }, // ランドリーの横
+  { dx: 1.7, dy: 4.7, pose: null }, // ミニキッチン（カウンターの奥に立つ）
+  { dx: 2.5, dy: 4.7, pose: null }, // ミニキッチン
+];
+/** 寮のスリープポッドの列（ROOM_FITTINGS.dorm の fnSleepPod と同じ dx）。手前 dy に立ち、奥 dy で中へ入る。 */
+const DORM_PODS_DX = [0.8, 2.4, 4.0, 7.8, 9.4, 11.0] as const;
+const DORM_POD_FRONT_DY = 1.95;
+const DORM_POD_IN_DY = 1.35;
+/** 寮のラウンジで過ごす秒数。 */
+const DORM_STAY_SEC = { min: 26, max: 48 };
+
 /**
  * 流水プールの置き場所（ROOM_FITTINGS.science の fnFlumeTank と同じ dx,dy・倍率）。
  * 絵の足元から水槽の真ん中までは、画面の上へ 42px×倍率（＝グリッドで gx・gy とも 0.84 マス奥）。
@@ -953,7 +984,12 @@ export class FacilityScene extends Phaser.Scene {
     if (focused) {
       this.zoom = this.dev.zoom === "fit" ? this.fitLandScale() : (this.dev.zoom ?? this.zoom);
       const c = centerOf(focused);
-      this.focusOn(c.gx, c.gy);
+      // ?at=dx,dy … 部屋の中の位置（回す前の向き・左上からのマス）に寄せる（大型プールの掲示板など）
+      const at = this.dev.at;
+      if (at) {
+        const q = roomPoint(focused, at[0], at[1]);
+        this.focusOn(q.gx, q.gy);
+      } else this.focusOn(c.gx, c.gy);
     } else if (this.dev.zoom != null) {
       // fit は「建物ぜんぶが入る」倍率。fitScale() は外の飾り帯まで含むので、ここでは使わない。
       this.zoom = this.dev.zoom === "fit" ? this.fitLandScale() : this.dev.zoom;
@@ -961,11 +997,13 @@ export class FacilityScene extends Phaser.Scene {
       this.focusOn((land.x0 + land.x1 + 1) / 2, (land.y0 + land.y1 + 1) / 2);
     }
     this.stockClassForDev();
+    this.fillDormForDev();
     this.pinForDev();
     this.markLeavingForDev();
     this.markGakudoWaitForDev();
     this.warmUpForDev();
     this.tireOutForDev(); // 体力は空回しのあとに減らす（コマの切れ目の回復で戻ってしまうため）
+    this.dormNowForDev();
     this.hideHudForDev();
     this.seatDinersForDev();
     this.openScreenForDev();
@@ -1472,6 +1510,32 @@ export class FacilityScene extends Phaser.Scene {
    * そこで **決まった刻みで update を回して** 進める。撮れる絵は、
    * 実際にその時間まで遊んだときと同じになる。
    */
+  /**
+   * 【見た目確認】寮を埋める（?dorm=1）。育成以上の子を定員まで入寮させる。
+   * 始めたばかりのデータには入寮者がいないので、寮で過ごす姿を撮るのに使う。
+   */
+  private fillDormForDev(): void {
+    if (!this.dev?.dorm) return;
+    for (const s of this.state.timeTrialAthletes()) {
+      if (this.state.dormResidents().length >= this.state.dormCapacity()) break;
+      this.state.enterDorm(s);
+    }
+  }
+
+  /**
+   * 【見た目確認】いま館内にいる入寮者を、練習が終わったことにして寮へ向かわせる（?dorm=go）。
+   * コマの切れ目を待たずに「寮のラウンジで過ごす → ポッドに入る」を撮るのに使う。
+   */
+  private dormNowForDev(): void {
+    if (this.dev?.dormGo !== true) return;
+    this.time.delayedCall(400, () => {
+      for (const p of this.people) {
+        if (!p.student.inDorm || p.leaving || p.recovering) continue;
+        if (!this.dormStopFor(p)) this.sendHome(p);
+      }
+    });
+  }
+
   private warmUpForDev(): void {
     const sec = this.dev?.warmSeconds ?? 0;
     if (sec <= 0) return;
@@ -3490,6 +3554,12 @@ export class FacilityScene extends Phaser.Scene {
 
   /** その人を、いま居る場所から入口まで帰らせる。 */
   private sendHome(p: Person): void {
+    // 入寮している選手は入口から帰らず、寮のポッドに入る（→ dormBedRoute）
+    const bed = this.dormBedRoute(p);
+    if (bed) {
+      p.leave(bed);
+      return;
+    }
     const g = p.gridPos();
     const room = this.roomOfCell(g);
     const route = leaveRoute(this.map(), g, room);
@@ -3533,7 +3603,9 @@ export class FacilityScene extends Phaser.Scene {
       }
       const roomSlot = o?.slot && (RECOVERY_ROOMS as readonly string[]).includes(o.slot.kind);
       if (!o || !o.slot || (!recovery && !roomSlot)) {
-        // 回復設備を使わない選手。医科学センターで測定を受けるか、たまに**食堂で食事をしてから**帰る
+        // 回復設備を使わない選手。入寮している子は寮で過ごし、そうでなければ
+        // 医科学センターで測定を受けるか、たまに**食堂で食事をしてから**帰る
+        if (this.dormStopFor(p)) continue;
         if (this.scienceStopFor(p)) continue;
         if (!this.mealStopFor(p)) this.sendHome(p);
         continue;
@@ -3662,11 +3734,12 @@ export class FacilityScene extends Phaser.Scene {
       if (already && !already.done && already !== replacing?.get(s.id)) continue;
       const station = spots[i];
       const delay = i * 0.22 + this.rng.frac() * 0.12;
+      const own = this.dormArrivalRoute(s, room, false) ?? route.map((c) => ({ ...c }));
       const person = new Person(
         this,
         this.world,
         s,
-        { route: [...route.map((c) => ({ ...c })), station], station, stroke: this.state.planFor(s).stroke },
+        { route: [...own, station], station, stroke: this.state.planFor(s).stroke },
         delay,
         (st) => {
           if (!this.dragMoved && !this.anyModalOpen()) this.openCard(st);
@@ -3722,8 +3795,10 @@ export class FacilityScene extends Phaser.Scene {
         }
       }
 
-      // プールへはまっすぐ向かい、飛び込み台に着いたところで水着になる（更衣室は廃止）
-      const route = visitRoute(map, target, { suit: isPool(target.kind) });
+      // プールへはまっすぐ向かい、飛び込み台に着いたところで水着になる（更衣室は廃止）。
+      // 入寮している子は入口からではなく、寮の自分のポッドから出てくる
+      const route =
+        this.dormArrivalRoute(s, target, isPool(target.kind)) ?? visitRoute(map, target, { suit: isPool(target.kind) });
       if (!route) continue; // 歩いて行けない＝来られない
 
       const laneNo = i % Math.max(1, lanes.length);
@@ -4225,6 +4300,96 @@ export class FacilityScene extends Phaser.Scene {
    * 空いている持ち場（SCIENCE_SPOTS）があるときだけ。見た目だけの寄り道で、
    * 効果（練習効率・ケガの治り・素質の見抜き）は sim 側が常にかけている。
    */
+  /** その選手が寝起きする寮（入寮していて、寮が建っていれば）。 */
+  private dormOf(s: Student): Equipment | null {
+    if (!s.inDorm) return null;
+    const dorms = this.usableRoomsOf("dorm");
+    if (dorms.length === 0) return null;
+    return dorms[s.id % dorms.length];
+  }
+
+  /** その選手のスリープポッド（手前に立つマスと、中へ入るマス）。人ごとに決まっている。 */
+  private dormPodOf(dorm: Equipment, s: Student): { front: Cell; inside: Cell } {
+    const dx = DORM_PODS_DX[s.id % DORM_PODS_DX.length];
+    return { front: roomPoint(dorm, dx, DORM_POD_FRONT_DY), inside: roomPoint(dorm, dx, DORM_POD_IN_DY) };
+  }
+
+  /**
+   * 【寮へ帰る】入寮している選手の帰り道。寮まで歩いて、自分のポッドの中へ入って消える。
+   * 寮が無い・入寮していない・歩いて行けないときは null（ふつうに入口から帰す）。
+   */
+  private dormBedRoute(p: Person): Waypoint[] | null {
+    const dorm = this.dormOf(p.student);
+    if (!dorm) return null;
+    const here = p.gridPos();
+    const from = this.roomOfCell(here);
+    const pod = this.dormPodOf(dorm, p.student);
+    let route: Waypoint[];
+    if (from && from.id === dorm.id) {
+      route = [{ ...here }];
+    } else {
+      const road = moveRoute(this.map(), from, dorm, here);
+      if (!road) return null;
+      route = road;
+      // 泳いでいた人は、まずプールサイドへ上がってから歩き出す
+      if (from && isPool(from.kind) && isOverPoolWater(from, here)) route.splice(1, 0, poolDeckNear(from, here));
+    }
+    route.push({ ...pod.front }, { ...pod.inside });
+    // 部屋を出た1歩目で私服に戻す（入口から帰るときと同じ）
+    if (route.length > 1) route[1].change = "street";
+    return route;
+  }
+
+  /**
+   * 【寮のラウンジで過ごす】入寮している選手は、練習のあと寮へ帰ってソファ・机・キッチンで過ごす。
+   * 過ごし終えたら sendHome がポッドへ連れて行く。席が全部埋まっていたら、そのままポッドへ。
+   */
+  private dormStopFor(p: Person): boolean {
+    const dorm = this.dormOf(p.student);
+    if (!dorm) return false;
+    const taken = this.takenSpots();
+    const free = DORM_SPOTS.map((sp) => ({
+      cell: roomPoint(dorm, sp.dx, sp.dy),
+      pose: sp.pose,
+      depth: sp.depth ? roomPoint(dorm, sp.depth.dx, sp.depth.dy) : null,
+    })).filter(
+      (sp) => !taken.has(spotKey(sp.cell)),
+    );
+    if (free.length === 0) return false;
+    const from = this.roomOfCell(p.gridPos());
+    const route = moveRoute(this.map(), from, dorm, p.gridPos());
+    if (!route) return false;
+    if (route.length > 1) route[1].change = "street";
+    const pick = free[Math.floor(this.rng.frac() * free.length)];
+    p.goRecover(
+      [...route, pick.cell],
+      randRange(DORM_STAY_SEC),
+      0,
+      pick.pose,
+      "street",
+      rotOf(dorm) === 1,
+      "recover",
+      null,
+      pick.depth,
+    );
+    return true;
+  }
+
+  /**
+   * 【寮から出てくる】入寮している選手の、練習へ向かう道順（自分のポッドから出て歩いて行く）。
+   * 入寮していない・寮が無い・歩いて行けないときは null（ふつうに入口から来る）。
+   */
+  private dormArrivalRoute(s: Student, target: Equipment, suit: boolean): Waypoint[] | null {
+    const dorm = this.dormOf(s);
+    if (!dorm) return null;
+    const pod = this.dormPodOf(dorm, s);
+    const road = moveRoute(this.map(), dorm, target, pod.front);
+    if (!road) return null;
+    const route: Waypoint[] = [{ ...pod.inside }, { ...pod.front }, ...road.slice(1)];
+    if (suit) route[route.length - 1].change = "suit";
+    return route;
+  }
+
   private scienceStopFor(p: Person): boolean {
     if (isSchoolClass(p.student.classId)) return false;
     if (Math.random() > SCIENCE_VISIT_CHANCE) return false;
@@ -4257,12 +4422,14 @@ export class FacilityScene extends Phaser.Scene {
         );
         return true;
       }
-      const free = SCIENCE_SPOTS.map((sp) => ({ cell: roomPoint(center, sp.dx, sp.dy), pose: sp.pose })).filter(
-        (sp) => !taken.has(spotKey(sp.cell)),
-      );
+      const free = SCIENCE_SPOTS.map((sp) => ({
+        cell: roomPoint(center, sp.dx, sp.dy),
+        pose: sp.pose,
+        depth: sp.depth ? roomPoint(center, sp.depth.dx, sp.depth.dy) : null,
+      })).filter((sp) => !taken.has(spotKey(sp.cell)));
       if (free.length === 0) continue;
       const pick = free[Math.floor(Math.random() * free.length)];
-      p.goRecover([...route, pick.cell], hold, 0, pick.pose, "street", rotOf(center) === 1, "measure");
+      p.goRecover([...route, pick.cell], hold, 0, pick.pose, "street", rotOf(center) === 1, "measure", null, pick.depth);
       return true;
     }
     return false;

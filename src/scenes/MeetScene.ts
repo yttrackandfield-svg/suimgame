@@ -10,7 +10,7 @@ import type { CharMode } from "../gfx/charSprites";
 import { lifeStageOf } from "../sim/growth";
 import { bakeChunks } from "../gfx/bake";
 import { formatTime, STROKE_LABEL, type RaceEvent, type Student } from "../sim/student";
-import type { Competition } from "../sim/competitions";
+import { isTimeTrial, type Competition } from "../sim/competitions";
 import type { CompetitionEntryResult, CompetitionResult, RelayResult } from "../sim/state";
 import { RELAY_DISTANCE, type RelayTeam } from "../sim/relay";
 import type { Racer } from "../sim/race";
@@ -1193,7 +1193,8 @@ export class MeetScene extends Phaser.Scene {
     mk(
       cx,
       y + 6,
-      `賞金 ◆ +${totalGems}　出場費 ◆ -${entryCost}　→ 差し引き ◆ ${net >= 0 ? "+" : ""}${net}　` +
+      // 記録会は賞金が出ない（主要大会だけ）。「賞金 ◆+0」と出すより、そう書いたほうが分かる
+      (isTimeTrial(this.meta.comp) ? `記録会は賞金なし　出場費 ◆ -${entryCost}　` : `賞金 ◆ +${totalGems}　出場費 ◆ -${entryCost}　→ 差し引き ◆ ${net >= 0 ? "+" : ""}${net}　`) +
         `人気度 +${totalPopularity}` +
         (passion > 0 ? `　🔥 情熱 +${Math.round(passion)}` : ""),
       14,

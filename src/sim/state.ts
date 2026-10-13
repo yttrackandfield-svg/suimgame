@@ -352,6 +352,7 @@ import {
   START,
   STROKE,
   TRAINING,
+  GENERAL_TIME_CAP,
 } from "../config/balance";
 
 export type { ClassId, ClassDef } from "./classes";
@@ -5789,8 +5790,12 @@ export class GameState {
         event,
         gender: roster[0].gender,
         // 日本選手権から上は、相手も全員が参加標準記録を切っている（→ GENERAL_RIVAL）
+        // 段が上がるほど床も上がる（→ GENERAL_TIME_CAP）
         timeCap:
-          comp.route === "general" ? effectiveStandard("nihonSenshuken", event, roster[0].gender).time : undefined,
+          comp.route === "general"
+            ? effectiveStandard("nihonSenshuken", event, roster[0].gender).time *
+              (GENERAL_TIME_CAP[comp.scale as keyof typeof GENERAL_TIME_CAP] ?? 1)
+            : undefined,
       },
     );
 
@@ -5818,7 +5823,8 @@ export class GameState {
          * **1つの大会につき1回だけ**。種目を選べる地区大会で
          * 「8種目に出して8回もらう」を防ぐため、最初の優勝ぶんだけ数える。
          */
-        if (mayorPrize === 0) mayorPrize = SCALE_MAYOR_PRIZE[comp.scale] ?? 0;
+        // 記録会は出ない（上の段の記録会は主要大会と同じ段の表を引くので、ここで弾く）
+        if (mayorPrize === 0 && !isTimeTrial(comp)) mayorPrize = SCALE_MAYOR_PRIZE[comp.scale] ?? 0;
       }
       // 【満足度】勝てば大きく上向き、決勝に残れなければ落ち込む
       applyMood(s, entrant.win ? "win" : entrant.advanced ? "goodPractice" : "lost");

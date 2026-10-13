@@ -595,7 +595,12 @@ export function resolveCompetition(
 ): CompReward {
   const { mult, label } = placementMult(entrant);
   const base = SCALE_REWARD[comp.scale];
-  const gems = Math.round(base.gems * mult);
+  /**
+   * 【記録会に賞金は無い】（2026-10-14）賞金は主要大会（学年の予選〜世界大会・日本選手権〜世界選手権）だけ。
+   * 記録会はタイムを測って段を上がる場。上の段の記録会は SCALE_REWARD を主要大会と同じ段（ken〜sekai）で引くので、
+   * ここで切らないと「世界記録会で優勝 ＝ 世界大会と同じ賞金」になっていた。人気度は残す。
+   */
+  const gems = isTimeTrial(comp) ? 0 : Math.round(base.gems * mult);
   const popularity = Math.round(base.popularity * mult);
 
   // 予選ステージの突破（優勝で次へ）

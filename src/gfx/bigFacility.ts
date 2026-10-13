@@ -1,6 +1,6 @@
 import type Phaser from "phaser";
 import { OUTLINE, box, darken, disc, lighten, outlineRect, part, shadow } from "./furniture";
-import { fill, floorQuad, onTop, slab, stroke, wallQuad, type Pt } from "./roomFurniture";
+import { HX, HY, fill, floorQuad, onTop, slab, stroke, wallQuad, type Pt } from "./roomFurniture";
 
 /**
  * 大型施設（◆100万）の什器。
@@ -40,6 +40,7 @@ export const BIG_FACILITY_KEYS = [
   "fnStandSeats2",
   "fnStandSeats3",
   "fnScoreboard",
+  "fnScoreboardM",
   "fnPoolFlags",
   "fnPodium",
   "fnGlassRail",
@@ -136,84 +137,223 @@ export function createBigFacilityTextures(scene: Phaser.Scene): void {
   /**
    * 【電光掲示板】観客席のいちばん奥の壁ぎわに立つ大型スコアボード（240×300）。
    *
-   * 【2026-09-26 に描き直した】以前は板を2本の細い支柱で観客席の中に立てていたので、
-   * 足元が座席に隠れて「観客席に倒れ込んでいる」ように見えた。いまは
-   *   ・板を**奥の壁の面に沿わせて**（壁の傾き＝wallQuad）据え付ける
-   *   ・床まで届く**鉄骨の柱2本と筋交い**、足元のベースプレートで支える
-   *   ・上に照明のバー、左右にスピーカー
-   * の形にして、壁ぎわにしっかり立っている大型設備に見せる。
-   * 脚は長めにして板を座席より高く上げる（脚が座席に隠れると、支えが見えずに浮いて見える）。
+   * 【2026-09-26】板を奥の壁の面に沿わせ、床まで届く鉄骨の柱2本と筋交いで支える形にした
+   *（細い支柱で観客席の中に立てていたときは、観客席へ倒れ込んで見えた）。
+   *
+   * 【2026-10-14 に表示面を描き直した】以前の表示面は、同じ色の横棒を8本並べただけで
+   * 「ブラインド」にしか見えなかった。いまは本物の掲示板の並びにしてある：
+   *   ・上の帯 … 「RESULTS」と時計（12:34）
+   *   ・8行   … レーン番号（橙）・順位・名前（点の文字）・タイム（52.31 などの数字）
+   *   ・1位の行だけ地を明るくして、順位を金色にする
+   *   ・面全体に細い走査線を引いて LED の面に見せる
+   * 数字と英字は 3×5 の点の字で、壁の傾きに沿わせた小さな平行四辺形で打つ。
+   *
+   * 【回した部屋用に、左右を反転した絵（fnScoreboardM）も作る】
+   * 回した大型プールでは掲示板を左右反転して置く。この絵は縦に切り分けて置くので、
+   * 「切る＋反転」を描くときに組み合わせると、切れ端の中身が反転されずに階段状にずれた。
+   * 反転は絵を作るときに済ませておき、置くときは反転しない（→ iso/facility の poolFittingsOf）。
+   *
    * 接地は「壁ぎわの床の線」の真ん中（x=120, y=238）＝ originY 238/300。
    */
   {
     const S = 0.5; // 奥の壁の傾き（wallQuad と同じ）
     const floorAt = (x: number): number => 178 + x * S; // 壁ぎわの床の線
-    const boardBottom = (x: number): number => 92 + x * S;
-    // 鉄骨の柱（床まで）と筋交い。板の奥に立つので先に描く
-    for (const x of [44, 196]) {
-      g.fillStyle(0x000000, 0.22);
-      g.fillEllipse(x + 2, floorAt(x) + 2, 26, 8);
-      part(g, x - 6, boardBottom(x) - 6, 12, floorAt(x) - boardBottom(x) + 6, 0x5c6673, 1);
-      g.fillStyle(0x8d99a8, 1);
-      g.fillRect(x - 4, boardBottom(x) - 4, 3, floorAt(x) - boardBottom(x) + 2);
-      part(g, x - 11, floorAt(x) - 4, 22, 6, 0x4a535e, 1); // ベースプレート
-    }
-    g.lineStyle(2.4, 0x6b7684, 1); // 筋交い（柱と柱のあいだに X）
-    g.lineBetween(50, boardBottom(50) + 6, 190, floorAt(190) - 8);
-    g.lineBetween(50, floorAt(50) - 8, 190, boardBottom(190) + 6);
-    g.lineStyle(1, OUTLINE, 0.6);
-    g.lineBetween(50, boardBottom(50) + 6, 190, floorAt(190) - 8);
-    g.lineBetween(50, floorAt(50) - 8, 190, boardBottom(190) + 6);
-    // 板の筐体（壁の面）
-    const frame = wallQuad(6, 234, 6, 96);
-    fill(g, frame, GLASS);
-    stroke(g, frame, 0.95, 1.6);
-    fill(g, wallQuad(12, 228, 12, 90), 0x161d26);
-    // ヘッダの帯（大会名のつもり）
-    fill(g, wallQuad(16, 224, 15, 25), darken(0xffd166, 0.55));
-    fill(g, wallQuad(17, 223, 16, 24), 0xffd166);
-    fill(g, wallQuad(17, 223, 16, 18.5), 0xfff1c4);
-    // 8行：レーン・順位・名前・タイム（文字は描かない＝点の並びで掲示板だと伝える）
-    for (let i = 0; i < 8; i++) {
-      const top = 29 + i * 7.4;
-      const cells: [number, number, number][] = [
-        [18, 30, GLOW],
-        [34, 46, i === 0 ? 0xffd166 : GLOW_DEEP],
-        [52, 150, GLOW_DEEP],
-        [158, 222, i === 0 ? GLOW : GLOW_DEEP],
-      ];
-      for (const [x0, x1, c] of cells) {
-        fill(g, wallQuad(x0, x1, top, top + 5), c);
-        fill(g, wallQuad(x0 + 1, x1 - 1, top + 0.8, top + 2), lighten(c, 1.25));
+    const BOARD_TOP = 4;
+    const BOARD_BOTTOM = 122;
+    const boardBottom = (x: number): number => BOARD_BOTTOM + x * S;
+
+    /** 3×5 の点の字（上の行から。1 が点灯）。 */
+    const GLYPH: Record<string, string> = {
+      "0": "111101101101111",
+      "1": "010110010010111",
+      "2": "111001111100111",
+      "3": "111001111001111",
+      "4": "101101111001001",
+      "5": "111100111001111",
+      "6": "111100111101111",
+      "7": "111001010010010",
+      "8": "111101111101111",
+      "9": "111101111001111",
+      R: "110101110101101",
+      E: "111100110100111",
+      S: "111100111001111",
+      U: "101101101101111",
+      L: "100100100100111",
+      T: "111010010010010",
+      ":": "000010000010000",
+      ".": "000000000000010",
+    };
+    const PX = 1.5; // 点1つの幅
+    const PY = 1.4; // 点1つの高さ
+    /** 壁の面の四角（ふつうの絵は wallQuad、左右反転の絵は傾きが逆）。 */
+    type Quad = (x0: number, x1: number, top: number, bottom: number) => Pt[];
+    let wq: Quad = wallQuad;
+    /** 壁の面に点の字を1文字打つ。返り値は次の文字の x。 */
+    const glyph = (gg: G, ch: string, x: number, top: number, color: number): number => {
+      const bits = GLYPH[ch];
+      if (!bits) return x + 4 * PX;
+      const narrow = ch === ":" || ch === ".";
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (bits[r * 3 + c] !== "1") continue;
+          const cx = narrow ? x + (c - 1) * PX : x + c * PX;
+          fill(gg, wq(cx, cx + PX * 0.9, top + r * PY, top + r * PY + PY * 0.85), color);
+        }
       }
-    }
-    // 上の照明のバー（ランプ6灯）
-    fill(g, wallQuad(20, 220, -2, 4), 0x3a4656);
-    for (let i = 0; i < 6; i++) {
-      const x = 32 + i * 35;
-      g.fillStyle(0xfff6d8, 1);
-      g.fillCircle(x, 1 + x * S, 2.6);
-      g.fillStyle(0xffffff, 0.35);
-      g.fillCircle(x, 1 + x * S, 5);
-    }
-    // 左右のスピーカー
-    for (const x of [0, 228]) {
-      fill(g, wallQuad(x, x + 12, 30, 70), 0x2b3646);
-      g.fillStyle(0x161d26, 1);
-      g.fillCircle(x + 6, 42 + (x + 6) * S, 3.4);
-      g.fillCircle(x + 6, 58 + (x + 6) * S, 3.4);
-    }
-    g.fillStyle(0xffffff, 0.14); // 板の照り
-    g.fillPoints(
-      [
-        { x: 14, y: 13 + 14 * S },
-        { x: 120, y: 13 + 120 * S },
-        { x: 120, y: 17 + 120 * S },
-        { x: 14, y: 17 + 14 * S },
-      ] as Phaser.Types.Math.Vector2Like[],
-      true,
-    );
+      return x + (narrow ? 2.4 : 4) * PX;
+    };
+    const text = (gg: G, s: string, x: number, top: number, color: number): number => {
+      let cx = x;
+      for (const ch of s) cx = glyph(gg, ch, cx, top, color);
+      return cx;
+    };
+    /** 名前の欄：点の字に見える模様（文字は描かず、行ごとに決まった並び）。 */
+    const nameDots = (gg: G, row: number, x0: number, top: number, color: number): void => {
+      let seed = 97 + row * 131;
+      const rnd = (): number => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      const chars = 5 + (row % 3);
+      for (let k = 0; k < chars; k++) {
+        const x = x0 + k * 5.2 * PX;
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 4; c++) {
+            if (rnd() > 0.52) continue;
+            fill(gg, wq(x + c * PX, x + c * PX + PX * 0.9, top + r * PY, top + r * PY + PY * 0.85), color);
+          }
+        }
+      }
+    };
+
+    const ROW_TIMES = ["52.31", "52.84", "53.06", "53.47", "53.90", "54.12", "54.58", "55.03"];
+    const IN_X0 = 10;
+    const IN_X1 = 226;
+    const IN_TOP = BOARD_TOP + 6;
+    const IN_BOTTOM = BOARD_BOTTOM - 6;
+    const HEAD_TOP = IN_TOP + 2;
+    const ROWS_TOP = HEAD_TOP + 16;
+    const ROW_H = 10.2;
+
+    /**
+     * 表示面の字（見出し・時計・レーン・順位・名前・タイム）。
+     * x0 は表示面の左端。**左右反転の絵でも字は左から右へ読める向きで打つ**
+     *（本物の掲示板はどの壁に付いていても字が鏡文字にならない）。
+     */
+    const drawText = (gg: G, x0: number): void => {
+      const L = x0;
+      const R = x0 + (IN_X1 - IN_X0);
+      text(gg, "RESULTS", L + 6, HEAD_TOP + 2.5, 0xffd166);
+      text(gg, "12:34", R - 6 - 5 * 4 * PX, HEAD_TOP + 2.5, GLOW);
+      for (let i = 0; i < 8; i++) {
+        const textTop = ROWS_TOP + i * ROW_H + 1.6;
+        const lane = [4, 5, 3, 6, 2, 7, 1, 8][i];
+        glyph(gg, String(lane), L + 5, textTop, 0xff9f43); // レーン（橙）
+        glyph(gg, String(i + 1), L + 16, textTop, i === 0 ? 0xffd166 : i < 3 ? 0xeef3f8 : 0x9fb3c4); // 順位
+        nameDots(gg, i, L + 30, textTop, i === 0 ? 0xeef3f8 : 0xb8c6d4);
+        text(gg, ROW_TIMES[i], R - 6 - (4 * 4 + 2.4) * PX, textTop, i === 0 ? 0xfff1c4 : GLOW);
+      }
+    };
+
+    const drawScoreboard = (gg: G): void => {
+      // 鉄骨の柱（床まで）と筋交い。板の奥に立つので先に描く
+      for (const x of [44, 196]) {
+        gg.fillStyle(0x000000, 0.22);
+        gg.fillEllipse(x + 2, floorAt(x) + 2, 26, 8);
+        part(gg, x - 6, boardBottom(x) - 6, 12, floorAt(x) - boardBottom(x) + 6, 0x5c6673, 1);
+        gg.fillStyle(0x8d99a8, 1);
+        gg.fillRect(x - 4, boardBottom(x) - 4, 3, floorAt(x) - boardBottom(x) + 2);
+        part(gg, x - 11, floorAt(x) - 4, 22, 6, 0x4a535e, 1); // ベースプレート
+      }
+      gg.lineStyle(2.4, 0x6b7684, 1); // 筋交い（柱と柱のあいだに X）
+      gg.lineBetween(50, boardBottom(50) + 4, 190, floorAt(190) - 8);
+      gg.lineBetween(50, floorAt(50) - 8, 190, boardBottom(190) + 4);
+      gg.lineStyle(1, OUTLINE, 0.6);
+      gg.lineBetween(50, boardBottom(50) + 4, 190, floorAt(190) - 8);
+      gg.lineBetween(50, floorAt(50) - 8, 190, boardBottom(190) + 4);
+
+      // 筐体（厚みを下と右に少し見せる）
+      fill(gg, wallQuad(8, 236, BOARD_TOP + 4, BOARD_BOTTOM + 4), 0x1a222c);
+      const frame = wallQuad(4, 232, BOARD_TOP, BOARD_BOTTOM);
+      fill(gg, frame, GLASS);
+      fill(gg, wallQuad(4, 232, BOARD_TOP, BOARD_TOP + 2), lighten(GLASS, 1.35)); // 上の縁の照り
+      stroke(gg, frame, 0.95, 1.6);
+      // 表示面（黒）
+      fill(gg, wallQuad(IN_X0, IN_X1, IN_TOP, IN_BOTTOM), 0x0b1016);
+
+      // 上の帯（字は drawText が打つ）
+      fill(gg, wallQuad(IN_X0 + 2, IN_X1 - 2, HEAD_TOP, HEAD_TOP + 11), 0x1c2a38);
+      // 見出しの下の線
+      fill(gg, wallQuad(IN_X0 + 2, IN_X1 - 2, HEAD_TOP + 12.2, HEAD_TOP + 13), darken(GLOW, 0.6));
+
+      // 8行の地（1位の行は明るく、偶数行はうっすら）。字は drawText
+      for (let i = 0; i < 8; i++) {
+        const top = ROWS_TOP + i * ROW_H;
+        if (i === 0) fill(gg, wallQuad(IN_X0 + 2, IN_X1 - 2, top, top + ROW_H - 1.4), 0x123a4a);
+        else if (i % 2 === 0) fill(gg, wallQuad(IN_X0 + 2, IN_X1 - 2, top, top + ROW_H - 1.4), 0x0f171f);
+      }
+
+      // 面の照り（左上から）
+      gg.fillStyle(0xffffff, 0.08);
+      gg.fillPoints(
+        [
+          { x: IN_X0, y: IN_TOP + IN_X0 * S },
+          { x: 120, y: IN_TOP + 120 * S },
+          { x: 96, y: IN_TOP + 26 + 96 * S },
+          { x: IN_X0, y: IN_TOP + 34 + IN_X0 * S },
+        ] as Phaser.Types.Math.Vector2Like[],
+        true,
+      );
+
+      // 上の照明のバー（ランプ6灯）
+      fill(gg, wallQuad(20, 216, BOARD_TOP - 4, BOARD_TOP + 1), 0x3a4656);
+      for (let i = 0; i < 6; i++) {
+        const x = 32 + i * 34;
+        const y = BOARD_TOP - 1.5 + x * S;
+        gg.fillStyle(0xffffff, 0.3);
+        gg.fillCircle(x, y, 4.6);
+        gg.fillStyle(0xfff6d8, 1);
+        gg.fillCircle(x, y, 2.4);
+      }
+      // 左右のスピーカー（筐体の外側に吊る）
+      for (const x of [0, 226]) {
+        fill(gg, wallQuad(x, x + 10, 34, 80), 0x2b3646);
+        stroke(gg, wallQuad(x, x + 10, 34, 80), 0.8, 1);
+        gg.fillStyle(0x161d26, 1);
+        gg.fillCircle(x + 5, 46 + (x + 5) * S, 3);
+        gg.fillCircle(x + 5, 66 + (x + 5) * S, 3);
+      }
+    };
+
+    /** 走査線（LED の面に見せる。字の上にも薄く重ねる）。 */
+    const scanlines = (gg: G, x0: number): void => {
+      for (let y = IN_TOP + 1; y < IN_BOTTOM; y += 2) fill(gg, wq(x0, x0 + (IN_X1 - IN_X0), y, y + 0.5), 0x000000, 0.22);
+    };
+
+    wq = wallQuad;
+    drawScoreboard(g);
+    drawText(g, IN_X0);
+    scanlines(g, IN_X0);
     make("fnScoreboard", 240, 300);
+
+    // 回した部屋用（左右反転）。本体は座標系ごと裏返して描き、字は裏返さずに逆の傾きで打つ
+    g.save();
+    g.translateCanvas(240, 0);
+    g.scaleCanvas(-1, 1);
+    drawScoreboard(g);
+    g.restore();
+    // 反転した絵の壁：x が増えるほど上がる（＝元の絵の 240−x の高さ）
+    wq = (x0, x1, top, bottom) => [
+      { x: x0, y: top + (240 - x0) * S },
+      { x: x1, y: top + (240 - x1) * S },
+      { x: x1, y: bottom + (240 - x1) * S },
+      { x: x0, y: bottom + (240 - x0) * S },
+    ];
+    const mirroredIn = 240 - IN_X1; // 反転した絵での表示面の左端
+    drawText(g, mirroredIn);
+    scanlines(g, mirroredIn);
+    wq = wallQuad;
+    make("fnScoreboardM", 240, 300);
   }
 
   /**
@@ -776,10 +916,25 @@ export function createBigFacilityTextures(scene: Phaser.Scene): void {
   }
 
   /**
-   * 【壁掛けの大型ディスプレイ】ラウンジの奥の壁（130×76。壁の傾きに倒す／originY 0.84）。
+   * 【大型ディスプレイ】ラウンジの奥（130×156。壁の傾きに倒す／originY 0.76）。
    * レースの映像が流れているつもり。1枚あるとラウンジが「共用の居場所」に見える。
+   *
+   * 【スタンドに載せた】（2026-10-14）館内の部屋どうしの境には壁が無い（柱だけ）ので、
+   * 「壁掛け」のつもりで床ぎわに置くと、画面が床に立てかけてあるように見えていた。
+   * 2本脚のスタンドで床から持ち上げる。接地は脚の足元の線の真ん中（x=65, y=118.5）。
    */
   {
+    const LEG_H = 30;
+    for (const x of [26, 104]) {
+      // 脚（画面の下の縁から床まで）と、床に置いた足
+      g.fillStyle(0x5c6673, 1);
+      g.fillRect(x - 2.5, 56 + x * 0.5, 5, LEG_H);
+      g.fillStyle(0x8d99a8, 1);
+      g.fillRect(x - 2.5, 56 + x * 0.5, 1.6, LEG_H);
+      outlineRect(g, x - 2.5, 56 + x * 0.5, 5, LEG_H, 0, 0.7);
+      fill(g, floorQuad(x, 56 + LEG_H + x * 0.5, 0.12, 0.08), 0x4a535e);
+      stroke(g, floorQuad(x, 56 + LEG_H + x * 0.5, 0.12, 0.08), 0.7, 1);
+    }
     const frame = wallQuad(4, 126, 6, 56);
     fill(g, frame, 0x1b222c);
     stroke(g, frame, 0.95, 1.4);
@@ -791,26 +946,46 @@ export function createBigFacilityTextures(scene: Phaser.Scene): void {
       const x = 22 + i * 26;
       g.fillCircle(x, 32 + x * 0.5, 2.6);
     }
-    make("fnDormScreen", 130, 76);
+    make("fnDormScreen", 130, 156);
   }
 
-  /** 【ラウンジのソファ】布張りの2人掛け（112×72、足元が下端）。 */
+  /**
+   * 【ラウンジのソファ】布張りの2人掛け（112×72、足元が下端）。
+   *
+   * 【2026-10-14 に描き直した】以前は背もたれを**画面に平行な角丸の四角**で描いていたので、
+   * 床の向きにそろった座面から浮いて、板が2枚ずれて重なっているように見えた。
+   * 背もたれ・肘掛け・クッションも、座面と同じ等角の向きで描く。
+   * 座る人は座面の上（足元から約24px）に乗る（→ FacilityScene の DORM_SPOTS）。
+   */
   {
-    fill(g, floorQuad(56, 62, 0.44, 0.26), 0x000000, 0.18);
-    const seat = slab(g, floorQuad(56, 58, 0.4, 0.2), 10, 10, 0x6d8fa3, 0x50707f, 0x3f5b68);
-    const back = onTop(seat, 0.5, 0.02); // 背もたれ（奥側に立てる）
-    g.fillStyle(0x5d7f93, 1);
-    g.fillRoundedRect(back.x - 44, back.y - 24, 88, 26, 5);
-    g.fillStyle(0x7fa0b4, 1);
-    g.fillRoundedRect(back.x - 41, back.y - 21, 82, 12, 4);
-    outlineRect(g, back.x - 44, back.y - 24, 88, 26, 5, 0.85);
-    for (const u of [0.16, 0.84]) {
-      // クッション（色を差して布に見せる）
-      const p = onTop(seat, u, 0.45);
-      g.fillStyle(u < 0.5 ? 0xe8b06a : 0xd67f6a, 1);
-      g.fillRoundedRect(p.x - 9, p.y - 14, 18, 14, 4);
-      outlineRect(g, p.x - 9, p.y - 14, 18, 14, 4, 0.75);
+    const BODY = 0x6d8fa3;
+    // 床の上の位置：along＝gx の向き（右下がり）、across＝gy の向き。+across は奥
+    const C = { x: 56, y: 60 };
+    const at = (along: number, across: number): Pt => ({
+      x: C.x + HX * along + HX * across,
+      y: C.y + HY * along - HY * across,
+    });
+    fill(g, floorQuad(C.x + 2, C.y + 3, 0.46, 0.26), 0x000000, 0.18); // 接地影
+    // 奥：背もたれ（床から立ち上がる厚い板）
+    const back = at(0, 0.15);
+    slab(g, floorQuad(back.x, back.y, 0.4, 0.07), 0, 30, lighten(BODY, 1.12), darken(BODY, 0.8), darken(BODY, 0.66));
+    // 左の肘掛け（奥側の端なので座面より先に描く）
+    const armL = at(-0.37, 0);
+    slab(g, floorQuad(armL.x, armL.y, 0.05, 0.22), 0, 20, lighten(BODY, 1.1), darken(BODY, 0.78), darken(BODY, 0.64));
+    // 座面
+    const seatC = at(0, -0.06);
+    const seat = slab(g, floorQuad(seatC.x, seatC.y, 0.32, 0.16), 0, 14, BODY, darken(BODY, 0.78), darken(BODY, 0.62));
+    // 座面のクッション2つ（境目の線で2人掛けに見せる）
+    g.lineStyle(1.2, OUTLINE, 0.55);
+    g.lineBetween(onTop(seat, 0.5, 0).x, onTop(seat, 0.5, 0).y, onTop(seat, 0.5, 1).x, onTop(seat, 0.5, 1).y);
+    // 背もたれのクッション（色を差して布に見せる）
+    for (const [u, c] of [[-0.17, 0xe8b06a], [0.17, 0xd67f6a]] as [number, number][]) {
+      const p = at(u, 0.06);
+      slab(g, floorQuad(p.x, p.y, 0.1, 0.04), 14, 12, lighten(c, 1.1), c, darken(c, 0.8));
     }
+    // 右の肘掛け（手前側の端なので座面のあと）
+    const armR = at(0.37, 0);
+    slab(g, floorQuad(armR.x, armR.y, 0.05, 0.22), 0, 20, lighten(BODY, 1.1), darken(BODY, 0.78), darken(BODY, 0.64));
     make("fnDormSofa", 112, 72);
   }
 

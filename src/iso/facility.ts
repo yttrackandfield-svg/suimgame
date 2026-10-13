@@ -1251,14 +1251,17 @@ const ROOM_FITTINGS: Partial<Record<RoomKind, RoomGear>> = {
   dorm: {
     base: [
       // 奥：スリープポッド6基（1基＝2人ぶん。DORM.capacityPerRoom = 12 と合わせてある）
-      { dx: 0.9, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      { dx: 2.7, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      { dx: 4.5, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      { dx: 7.3, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      { dx: 9.1, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      { dx: 10.9, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
-      // 奥の壁：ラウンジの大型ディスプレイ
-      { dx: 5.9, dy: 0.04, texture: "fnDormScreen", scale: 1.0, layer: 16, originY: 0.84 },
+      // 【真ん中を広く空ける】（2026-10-14）ポッドは壁より1マス手前に立つので、画面では
+      // 壁の左上を隠す。以前の並び（4.5 と 7.3 の間）だと、壁のディスプレイの右半分がポッドに隠れていた。
+      // 左右の3基ずつを外へ寄せ、ディスプレイが丸ごと見える隙間を作る（→ FacilityScene の DORM_PODS_DX）。
+      { dx: 0.8, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      { dx: 2.4, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      { dx: 4.0, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      { dx: 7.8, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      { dx: 9.4, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      { dx: 11.0, dy: 1.15, texture: "fnSleepPod", scale: 1.0, layer: 18 },
+      // 奥の壁：ラウンジの大型ディスプレイ（左右のポッドの隙間に見えるよう、少し左・少し小さく）
+      { dx: 5.05, dy: 0.3, texture: "fnDormScreen", scale: 0.85, layer: 16, originY: 118.5 / 156 },
       // 中ほど：共用ラウンジ
       { dx: 5.9, dy: 3.1, texture: "fnDormSofa", scale: 1.0, layer: 21 },
       { dx: 5.9, dy: 4.2, texture: "fnDormTable", scale: 1.0, layer: 23 },
@@ -1429,20 +1432,27 @@ function poolFittingsOf(pool: Equipment): Fitting[] {
      */
     const SB_W = 240;
     const SB_SCALE = 0.95;
-    const SB_SLICES = 6;
+    const SB_SLICES = 8;
     const sbCenter = f.w / 2 - 0.5;
     for (let k = 0; k < SB_SLICES; k++) {
       const x = (k * SB_W) / SB_SLICES;
       const w = SB_W / SB_SLICES;
-      // 切れ端の真ん中が、壁ぞいに何マスずれているか（絵の 60px ＝ 壁ぞいに1マス）
-      const along = ((x + w / 2 - SB_W / 2) * SB_SCALE) / 60;
+      // 切れ端の真ん中が、壁ぞいに何マスずれているか（絵の 60px ＝ 壁ぞいに1マス）。
+      // 回した部屋は左右反転の絵なので、絵の右へ行くほど**部屋の手前の端（dx の小さいほう）**になる
+      const off = ((x + w / 2 - SB_W / 2) * SB_SCALE) / 60;
+      const along = flipX ? -off : off;
       out.push({
         cell: at(sbCenter, 0.02),
-        texture: "fnScoreboard",
+        /**
+         * 【回した部屋は反転済みの絵を使い、置くときは反転しない】（2026-10-14）
+         * 切り分けた絵を setFlipX で反転すると、切れ端の位置だけ鏡に映って中身は反転されず、
+         * 掲示板が階段状にばらばらに見えていた（→ gfx/bigFacility の fnScoreboardM）。
+         */
+        texture: flipX ? "fnScoreboardM" : "fnScoreboard",
         scale: SB_SCALE,
         layer: 12,
         originY: 238 / 300,
-        flipX,
+        flipX: false,
         // 1px 重ねて切る（ぴったりだと切れ目に細い隙間が見える）
         crop: { x: Math.max(0, x - 0.5), w: w + 1 },
         depthCell: at(sbCenter + along - 0.6, 0.02),
