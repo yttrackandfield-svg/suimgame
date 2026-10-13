@@ -1354,6 +1354,9 @@ export class FacilityScene extends Phaser.Scene {
         }
         noteMeetResult(target, "地区記録会", { stroke: "free", distance: 100 }, null, { year: y, month: 2 });
         noteMeetResult(target, "全国大会（中学）", { stroke: "free", distance: 100 }, 6, { year: y, month: 7 });
+        // 突破した標準記録（どの種目で突破したかを出す絵）
+        target.season.standards.push("japanOpen", "nihonSenshuken");
+        target.season.standardEvents.push("japanOpen@free-100", "japanOpen@back-50", "nihonSenshuken@free-100");
       }
       this.openCard(target);
       if (this.dev?.tab) this.cardModal?.showTab(this.dev.tab);
@@ -2571,6 +2574,11 @@ export class FacilityScene extends Phaser.Scene {
    *（呼び出し側が dragMoved を見ている）。
    */
   private openRoomInfo(room: Equipment): void {
+    // 医科学センター・低酸素トレーニングルームは、時間割で使う部屋。タップしたらその部屋の時間割を開く
+    if (isTrainingRoom(room.kind)) {
+      this.onTimetable(room.id);
+      return;
+    }
     this.roomInfo?.destroy();
     this.roomInfo = new RoomInfoModal(this, this.state, room, {
       onClose: () => {
@@ -2807,10 +2815,11 @@ export class FacilityScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- 時間割
 
-  private onTimetable(): void {
+  private onTimetable(focusRoomId?: number): void {
     this.openPanel("時間割", () => {
       this.timetableModal?.destroy();
       this.timetableModal = new TimetableModal(this, this.state, {
+        focusRoomId,
         onChanged: () => {
           this.respawnRunning();
           this.refreshHud();

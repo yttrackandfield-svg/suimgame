@@ -35,6 +35,8 @@ import type { GameState } from "../sim/state";
 export interface TimetableCallbacks {
   onChanged: () => void;
   onClose: () => void;
+  /** 開いたときにその部屋の段まで送っておく（医科学センター・低酸素トレーニングルームをタップしたとき）。 */
+  focusRoomId?: number;
 }
 
 /** クラスの選択肢（空きコマ＝null を先頭に）。 */
@@ -94,7 +96,13 @@ export class TimetableModal {
     }, this.head);
 
     this.render();
+    // 部屋をタップして開いたときは、その部屋の段を一番上に出す
+    const at = cb.focusRoomId != null ? this.roomTop.get(cb.focusRoomId) : undefined;
+    if (at != null) this.m.jumpTo(at - this.listTop);
   }
+
+  /** 部屋ごとの見出しの高さ（→ focusRoomId）。 */
+  private readonly roomTop = new Map<number, number>();
 
   destroy(): void {
     this.closePicker();
@@ -128,8 +136,8 @@ export class TimetableModal {
         `幼児・学童は同じ時間に何本のプールでも開ける（そのぶん定員が増える／コーチも人数ぶん要る）。\n` +
         `育成B以上は同じ時間に1つだけ。別のプールでなら、別のクラスを同時に回せる。\n` +
         `コーチは同じ時間に1つのプールだけ。クラス名・コーチ名をタップすると一覧から選べる。\n` +
-        `医科学センター（フォーム・スタート・ターン）と低酸素トレーニングルーム（持久力）も、` +
-        `コマに育成B以上のクラスを入れると、その能力が大きく伸びる（部屋では泳法は伸びない）。`,
+        `医科学センター（いま練習している泳法の熟練度 ×2.5）と低酸素トレーニングルーム（持久力 ×2.5）も、` +
+        `コマに育成B以上のクラスを入れて使う。同じクラスはプール・医科学・低酸素のどれか1つにしか同じ時間に入れない。`,
     );
   }
 
@@ -150,13 +158,14 @@ export class TimetableModal {
 
     let y = this.listTop + 6;
     for (const pool of pools) {
+      this.roomTop.set(pool.id, y);
       const usable = this.state.isRoomUsable(pool);
       const label = this.state.poolLabelOf(pool.id);
       const head = this.m.text(
         20,
         y,
         (isTrainingRoom(pool.kind)
-          ? `${label}　（${pool.kind === "science" ? "フォーム・スタート・ターン" : "持久力"}が伸びる／育成B以上）`
+          ? `${label}　（${pool.kind === "science" ? "いま練習している泳法の熟練度 ×2.5" : "持久力 ×2.5"}／育成B以上）`
           : `${label}　（1コマ ${venueSlotsOf(pool.kind)}人${pool.kind === "pool10" ? "／練習の伸び ×1.5" : ""}）`) +
           (usable ? "" : "　⚠ 歩いて行けない"),
         14,

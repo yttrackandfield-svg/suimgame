@@ -97,6 +97,10 @@ interface RowView {
   check: Phaser.GameObjects.Text;
   /** 注目選手の★（顔の左上に重ねる。押すと付け外し）。 */
   star: Phaser.GameObjects.Text;
+  /** 退会の予告（退会が決まっている子だけ。行の3段目に横幅いっぱいで出す）。 */
+  notice: Phaser.GameObjects.Text;
+  /** 行の真ん中の高さ（3段にするときの基準）。 */
+  cy: number;
   student: Student | null;
 }
 
@@ -132,8 +136,12 @@ export class RosterModal {
   private readonly HEAD_Y = 180;
   private readonly HINT_Y = 200;
 
-  /** 行の高さ（2段組：上段＝名前と総合、下段＝学年と各能力）。 */
-  private readonly ROW_H = 66;
+  /**
+   * 行の高さ（2段組：上段＝名前と総合、下段＝学年と各能力）。
+   * 【66 → 70】（2026-10-14）退会が決まった子だけ3段目に予告を出すので、そのぶん高くした。
+   * 7行 × 70 ＋ 220 ＝ 710 で、下のページ送り（PH−58＝722 から）には掛からない。
+   */
+  private readonly ROW_H = 70;
   /** 行が並びはじめる高さ。 */
   private readonly ROW_TOP = 220;
   /**
@@ -711,6 +719,8 @@ export class RosterModal {
     const fav = mk(this.PW - 20, DOWN, 14, "#8fc0e6", false, 1);
     // チェックは顔の上に重ねる（列を増やすと能力値の並びが崩れるため）
     const check = mk(24 + PORTRAIT_SIZE / 2, cy, 24, "#f7dc6f", true, 0.5);
+    // 退会の予告（3段目）。能力の列の下まで横幅いっぱいに使えるので、短く削らずに書ける
+    const notice = mk(nameX, cy + 22, 12.5, "#e67e22", true);
 
     /**
      * 【★は顔の左上の角に重ねる】列として立てると、能力の5列（STAT_X〜）と
@@ -731,7 +741,7 @@ export class RosterModal {
       this.toggleStar(s);
     });
 
-    return { rect, face, name, sub, cond, stats, rank, fav, check, star, student: null };
+    return { rect, face, name, sub, cond, stats, rank, fav, check, star, notice, cy, student: null };
   }
 
   /** ★の付け外し。上限に達していたら理由を出すだけで、古い★は外さない。 */
@@ -757,6 +767,7 @@ export class RosterModal {
     const parts = [row.rect, row.face, row.name, row.sub, row.cond, row.rank, row.fav, ...row.stats];
     if (!s) {
       for (const p of parts) p.setVisible(false);
+      row.notice.setVisible(false);
       row.check.setVisible(false);
       row.star.setVisible(false);
       return;
@@ -796,7 +807,15 @@ export class RosterModal {
     const badges: string[] = [];
     // 【退会の予告は先頭】入らなければ後ろから落とす仕組みなので、
     // いちばん取り返しのつかない知らせを先に置いて、最後まで残るようにする
-    if (leaving) badges.push(noRoom ? "⚠空きなし退会" : "⚠来月で退会");
+    /**
+     * 【退会の予告は3段目に分けた】（2026-10-14）
+     * 以前は学年のとなりに「⚠空きなし退会」と詰めて書き、入らなければ「⚠退会」に縮めていた。
+     * 何のことか分かりにくく、ほかの印とも取り合いになるので、行を3段にして横幅いっぱいで書く。
+     */
+    const notice = !leaving ? "" : noRoom ? "⚠ 学童に空きがない場合、来月退会" : "⚠ 来月で退会（入れるクラスへ昇格させれば残る）";
+    row.notice.setVisible(leaving).setText(notice);
+    // 3段にするときは、下段（学年）を少し上げて予告の段を空ける
+    row.sub.setY(leaving ? row.cy + 3 : row.cy + 15);
     if (this.classId === "all") badges.push(classLabel(s.classId));
     if (restLeft > 0) badges.push(`🛌${restLeft}週`);
     if (s.planMode === "self") badges.push("個人");
@@ -806,13 +825,9 @@ export class RosterModal {
       badges.pop();
       row.sub.setText(withBadges());
     }
-    // 最後の1つ（退会の印）でもはみ出すなら、短い書き方に替える → それでもだめなら落とす
+    // 最後の1つでもはみ出すなら落とす
     if (badges.length > 0 && row.sub.width > this.SUB_W) {
-      if (leaving) {
-        badges[0] = "⚠退会";
-        row.sub.setText(withBadges());
-      }
-      if (row.sub.width > this.SUB_W) {
+      {
         badges.pop();
         row.sub.setText(withBadges());
       }

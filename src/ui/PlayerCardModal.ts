@@ -39,6 +39,7 @@ import {
 } from "../sim/student";
 import { staminaOf, STAMINA_BAR, STAMINA_COLOR, STAMINA_ICON, STAMINA_LABEL } from "../sim/stamina";
 import { STANDARD_LABEL, type StandardKey } from "../data/standardTimes";
+import { standardEventsOf } from "../sim/competitions";
 import { STROKE } from "../config/balance";
 
 /**
@@ -810,7 +811,17 @@ export class PlayerCardModal {
         : "まだ記録なし（記録会で計測される）";
     y = this.row(y, "自己ベスト", best, "#f9e79f");
     y = this.row(y, "通算優勝", s.wins > 0 ? `${s.wins} 回` : "なし", s.wins > 0 ? "#2ecc71" : "#95a6b8");
-    const std = s.season.standards.map((k) => STANDARD_LABEL[k as StandardKey] ?? k).join("・");
+    // 【どの種目で突破したか】（2026-10-14）標準記録は種目ごとに違うので、種目まで書く。
+    // 種目の記録が無い古いデータは、標準記録の名前だけ出す
+    const std = s.season.standards
+      .map((k) => {
+        const evs = standardEventsOf(s, k as StandardKey);
+        const label = STANDARD_LABEL[k as StandardKey] ?? k;
+        return evs.length > 0
+          ? `${label}（${evs.map((e) => `${STROKE_LABEL[e.stroke]}${e.distance}m`).join("・")}）`
+          : label;
+      })
+      .join("\n");
     y = this.row(y, "突破した標準記録", std || "なし（今年度）", std ? "#aed6f1" : "#95a6b8");
     y = this.row(
       y,

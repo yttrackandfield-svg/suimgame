@@ -270,6 +270,11 @@ export function hasClearedStage(s: Student, stage: string, ev?: RaceEvent): bool
   return false;
 }
 
+/** その標準記録を突破した種目の一覧（選手カードの成績に出す）。 */
+export function standardEventsOf(s: Student, key: StandardKey): RaceEvent[] {
+  return eventsOfKeys(s.season.standardEvents ?? [], key);
+}
+
 /** その段を突破した種目の一覧（次の大会で出られる種目の案内に使う）。 */
 export function clearedEventsOf(s: Student, stage: string): RaceEvent[] {
   return eventsOfKeys(s.season.clearedStages, stage);

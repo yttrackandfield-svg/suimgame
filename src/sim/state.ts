@@ -353,6 +353,7 @@ import {
   STROKE,
   TRAINING,
   GENERAL_TIME_CAP,
+  GENERAL_MAYOR_PRIZE,
 } from "../config/balance";
 
 export type { ClassId, ClassDef } from "./classes";
@@ -3788,12 +3789,15 @@ export class GameState {
           //（バタフライと個人メドレーは疲れる、平泳ぎは軽い → STROKE.energyCost）。
           // 育成〜プロは1日に何コマでも入れられるので、体力が尽きればそれ以上は伸びない
           // ＝「コマを詰め込むほど強くなる」にはならず、休ませる判断が要る。
-          if (venue) continue; // 部屋では泳げない（泳法の練習はプールのコマで）
+          // 低酸素トレーニングルームでは泳げない（泳法の練習はプールのコマで）。
+          // 医科学センターは流水プールで泳ぎを撮って直すので、泳法の熟練度がよく伸びる（→ TRAINING_ROOM.strokeMult）
+          const venueStroke = venue ? (TRAINING_ROOM.strokeMult[venue.kind] ?? 0) : 1;
+          if (venueStroke <= 0) continue;
           const strokeCost = TRAINING.strokeEnergyCost * (STROKE.energyCost[plan.stroke] ?? 1);
           if (s.energy < strokeCost) break;
           s.energy = Math.max(0, s.energy - strokeCost);
           const sres = applyStrokeTraining(s, plan.stroke, {
-            coachMult: mentorMult * routeMult * bigPool,
+            coachMult: mentorMult * routeMult * bigPool * venueStroke,
             classFitMult: fitMult,
             specialtyMult: specialtyStrokeMult(mentor, plan.stroke),
             researchMult: rb.stroke[plan.stroke] * rb.train,
@@ -4893,7 +4897,8 @@ export class GameState {
     let mult =
       (CAMP.baseMult + this.rand() * CAMP.randSpread) *
       def.mult *
-      (1 + EQUIPMENT.altitudeCampPer * this.usableCount("altitudeLab"));
+      // 2棟建てても +60% のまま（説明どおり。大会のタイムと同じく、効くのは1つぶん）
+      (1 + EQUIPMENT.altitudeCampPer * Math.min(1, this.usableCount("altitudeLab")));
     const level = conditionLevel(s.condition);
     const good = level === "good" || level === "peak";
     const risky = isRiskyCondition(level);
@@ -5824,7 +5829,13 @@ export class GameState {
          * 「8種目に出して8回もらう」を防ぐため、最初の優勝ぶんだけ数える。
          */
         // 記録会は出ない（上の段の記録会は主要大会と同じ段の表を引くので、ここで弾く）
-        if (mayorPrize === 0 && !isTimeTrial(comp)) mayorPrize = SCALE_MAYOR_PRIZE[comp.scale] ?? 0;
+        // 一般の大会（日本選手権〜世界選手権）は学年の大会より高い（→ GENERAL_MAYOR_PRIZE）
+        if (mayorPrize === 0 && !isTimeTrial(comp)) {
+          mayorPrize =
+            comp.route === "general"
+              ? (GENERAL_MAYOR_PRIZE[comp.scale as keyof typeof GENERAL_MAYOR_PRIZE] ?? SCALE_MAYOR_PRIZE[comp.scale] ?? 0)
+              : (SCALE_MAYOR_PRIZE[comp.scale] ?? 0);
+        }
       }
       // 【満足度】勝てば大きく上向き、決勝に残れなければ落ち込む
       applyMood(s, entrant.win ? "win" : entrant.advanced ? "goodPractice" : "lost");
